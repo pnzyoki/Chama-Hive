@@ -1,241 +1,79 @@
-# 🌿 ChamaHive — Sacco & Chama Management System
+# 🌿 ChamaHive
 
-> A modern, full-featured web application for managing Kenyan investment groups (Chamas / SACCOs) — built with React, Vite, and Supabase.
+A modern Sacco & Chama management system for Kenyan investment groups — built with React, Vite, and Supabase.
 
-![ChamaHive Preview](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
-![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)
-![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?style=flat-square&logo=supabase)
-![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite)
+## Stack
+- **Frontend** — React 18 + Vite 5
+- **Backend** — Supabase (PostgreSQL + Auth)
+- **Charts** — Recharts
+- **Styling** — Vanilla CSS-in-JS, DM Sans
 
----
+## Features
+- 📊 **Dashboard** — fund allocation pie chart, monthly contributions bar chart, loan alerts
+- 💰 **Contributions** — manual entry or bulk Excel/CSV upload with preview
+- 🏦 **Loans** — request, approve/reject, repay with auto interest accrual (10%/mo)
+- 👥 **Members** — enroll, edit, remove, assign roles (member / treasurer / chairman / admin)
+- 🌙 **Dark mode** + fully responsive (mobile drawer + bottom nav)
+- 📱 **M-Pesa** integration (Daraja API) — *coming soon*
 
-## ✨ Features
-
-### 📊 Dashboard
-- **Real-time fund overview** — total chama funds, active loans, and interest owed
-- **Fund Allocation pie chart** — visualize available vs loaned-out funds
-- **Monthly Contributions bar chart** — track group savings trends over the year
-- **Personal loan alerts** — members see their own outstanding balances at a glance
-- **Contribution status table** — full/partial/missed status per member per month
-
-### 💰 Contributions
-- Record monthly contributions manually (treasurer/admin/chairman)
-- **Bulk Excel upload** — import contributions from `.xlsx` / `.csv` files via SheetJS
-- Preview import before confirming — safe, non-destructive merge
-- Role-based visibility — regular members only see their own record
-- Progress bars per member toward annual target
-
-### 🏦 Loans
-- Members can request loans with purpose description
-- Privileged users (chairman/treasurer/admin) approve or reject with one click
-- Automatic interest accrual (10%/month, configurable)
-- Repayment recording with outstanding balance tracking
-- Loans auto-mark as "Completed" when fully repaid
-
-### 👥 Members
-- Admin can enroll new members with full KYC details (phone, ID, next of kin)
-- Role assignment system: `member`, `treasurer`, `chairman`, `admin`
-- Edit member details or remove members (records are preserved for accounting)
-- Members see only their own card; privileged users see all
-
-### 📱 M-Pesa Integration (Planned)
-- Safaricom Daraja API integration for STK Push payments
-- C2B listener to auto-log contributions from M-Pesa transactions
-- SMS receipt notifications
-
-### 🌙 Dark / Light Mode
-- Smooth system-wide theme toggle
-- Fully themed sidebar, charts, cards, modals, and inputs
-
-### 📱 Fully Responsive
-- Desktop: fixed sidebar navigation
-- Mobile: slide-in drawer + bottom navigation bar
-- Optimized for all screen sizes
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18 (JSX, hooks) |
-| Bundler | Vite 5 |
-| Backend / Auth | Supabase (PostgreSQL + Auth) |
-| Charts | Recharts |
-| Spreadsheet parsing | SheetJS (dynamically loaded) |
-| Styling | Vanilla CSS-in-JS |
-| Fonts | DM Sans (Google Fonts) |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js v18+ and npm
-- A [Supabase](https://supabase.com) project (free tier is fine)
-
-### 1. Clone the repository
+## Quick Start
 
 ```bash
 git clone https://github.com/pnzyoki/Chama-Hive.git
 cd Chama-Hive
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
 ```
 
-### 3. Configure environment variables
-
-Create a `.env` file in the project root:
-
+Create a `.env` file:
 ```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
-
-> ⚠️ **Never commit your `.env` file.** It is listed in `.gitignore`.
-
-You can find your credentials in your Supabase project under:  
-**Settings → API → Project URL** and **anon public key**
-
-### 4. Set up Supabase tables
-
-Run the following SQL in your Supabase SQL Editor:
-
-```sql
--- Members table
-create table members (
-  id uuid primary key default gen_random_uuid(),
-  auth_id uuid references auth.users(id),
-  name text not null,
-  phone text not null,
-  email text,
-  id_number text,
-  role text default 'member' check (role in ('member', 'treasurer', 'chairman', 'admin')),
-  avatar text,
-  join_date date,
-  next_of_kin text,
-  nok_phone text,
-  enrolled_by uuid,
-  created_at timestamptz default now()
-);
-
--- Contributions table
-create table contributions (
-  id uuid primary key default gen_random_uuid(),
-  member_id uuid references members(id),
-  month text not null,
-  year integer not null,
-  amount numeric not null,
-  logged_by uuid,
-  created_at timestamptz default now(),
-  unique(member_id, month, year)
-);
-
--- Loans table
-create table loans (
-  id uuid primary key default gen_random_uuid(),
-  member_id uuid references members(id),
-  amount numeric not null,
-  purpose text,
-  status text default 'pending' check (status in ('pending', 'active', 'completed', 'rejected')),
-  interest_rate numeric default 0.10,
-  paid numeric default 0,
-  date date default current_date,
-  due_date date,
-  approved_by uuid,
-  created_at timestamptz default now()
-);
-```
-
-### 5. Start the development server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+## Supabase Schema
 
----
+```sql
+create table members (
+  id uuid primary key default gen_random_uuid(),
+  auth_id uuid references auth.users(id),
+  name text, phone text, email text, id_number text,
+  role text default 'member',
+  avatar text, join_date date, next_of_kin text, nok_phone text
+);
 
-## 🔐 Authentication & Role System
+create table contributions (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid references members(id),
+  month text, year int, amount numeric,
+  unique(member_id, month, year)
+);
 
-ChamaHive uses **Supabase Auth** for sign-in / sign-up.
+create table loans (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid references members(id),
+  amount numeric, purpose text,
+  status text default 'pending',
+  interest_rate numeric default 0.10,
+  paid numeric default 0,
+  date date, due_date date, approved_by uuid
+);
+```
 
-| Role | Permissions |
+## Roles
+
+| Role | Access |
 |---|---|
-| `member` | View own contributions, loans, and member card; request loans |
-| `treasurer` | All member permissions + bulk-upload contributions, record repayments |
-| `chairman` | All treasurer permissions + approve/reject loans |
-| `admin` | Full access — enroll/edit/remove members, assign roles |
+| `member` | Own data + loan requests |
+| `treasurer` | + Record contributions, repayments |
+| `chairman` | + Approve / reject loans |
+| `admin` | Full access — enroll & manage members |
 
-New sign-ups are prompted to complete their profile (name, phone, ID) before accessing the dashboard.
-
----
-
-## 📁 Project Structure
-
-```
-chamahive/
-├── public/
-│   └── vite.svg
-├── src/
-│   ├── main.jsx          # App entry point
-│   ├── root.jsx          # Auth gate (session → SignIn or ChamaApp)
-│   ├── SignIn.jsx        # Sign In / Sign Up page
-│   ├── chama-system.jsx  # Main app shell + all views (Dashboard, Contributions, Loans, Members, M-Pesa)
-│   ├── supabase.js       # Supabase client + all DB helper functions
-│   ├── index.css         # Global CSS resets
-│   └── App.css           # Additional base styles
-├── index.html
-├── vite.config.js
-├── package.json
-└── .env                  # Not committed — add your own
-```
+## Excel Import Format
+Column `Name` (must match enrolled name) + month columns `Jan Feb ... Dec` with KES amounts.
 
 ---
-
-## 🧾 Excel Contribution Import Format
-
-When using the **Upload Excel** feature, your spreadsheet must follow this format:
-
-| Name | Jan | Feb | Mar | Apr | ... |
-|---|---|---|---|---|---|
-| Jane Muthoni | 2000 | 2000 | 1000 | 2000 | ... |
-| John Kamau | 2000 | 0 | 2000 | 2000 | ... |
-
-- Column A must be **Name** (must exactly match the enrolled member's name)
-- Month columns use **3-letter abbreviations**: `Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec`
-- Amounts in **KES** (numbers only, no commas or currency symbols)
-- Leave blank or `0` for months with no contribution
-
----
-
-## 📌 Roadmap
-
-- [x] Member enrollment & role management
-- [x] Monthly contribution tracking (manual + Excel import)
-- [x] Loan requests, approvals, and repayment tracking
-- [x] Dashboard charts (pie + bar)
-- [x] Dark mode
-- [x] Responsive mobile layout
-- [x] Supabase authentication & profile completion flow
-- [ ] M-Pesa Daraja integration (STK Push + C2B)
-- [ ] SMS notifications via Africa's Talking
-- [ ] PDF statement generation
-- [ ] Annual report / audit export
-
----
-
-## 🤝 Contributing
-
-Pull requests are welcome. For major changes, please open an issue first to discuss what you'd like to change.
-
----
-
-## 📄 License
-
 MIT © [pnzyoki](https://github.com/pnzyoki)
