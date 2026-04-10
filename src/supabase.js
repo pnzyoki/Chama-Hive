@@ -18,26 +18,29 @@ export async function fetchProfile(authId) {
   return data;
 }
 
-export async function fetchMembers(chamaId) {
-  let query = supabase.from("members").select("*").order("name", { ascending: true });
-  if (chamaId) query = query.eq("chama_id", chamaId);
-  const { data, error } = await query;
+export async function fetchMembers() {
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .order("name", { ascending: true });
   if (error) throw error;
   return data;
 }
 
-export async function fetchContributions(year, chamaId) {
-  let query = supabase.from("contributions").select("*").eq("year", year);
-  if (chamaId) query = query.eq("chama_id", chamaId);
-  const { data, error } = await query;
+export async function fetchContributions(year) {
+  const { data, error } = await supabase
+    .from("contributions")
+    .select("*")
+    .eq("year", year);
   if (error) throw error;
   return data;
 }
 
-export async function fetchLoans(chamaId) {
-  let query = supabase.from("loans").select("*").order("date", { ascending: false });
-  if (chamaId) query = query.eq("chama_id", chamaId);
-  const { data, error } = await query;
+export async function fetchLoans() {
+  const { data, error } = await supabase
+    .from("loans")
+    .select("*")
+    .order("date", { ascending: false });
   if (error) throw error;
   return data;
 }
@@ -145,16 +148,6 @@ export async function upsertContribution(memberId, month, year, amount, userId) 
       .insert([{ member_id: memberId, month, year, amount }]);
     if (error) throw error;
   }
-}
-
-export async function fetchChama(chamaId) {
-  const { data, error } = await supabase
-    .from("chamas")
-    .select("*")
-    .eq("id", chamaId)
-    .single();
-  if (error) throw error;
-  return data;
 }
 
 export async function signOut() {

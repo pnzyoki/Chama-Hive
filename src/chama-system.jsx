@@ -1262,8 +1262,8 @@ function SidebarContent({ t, isMobile, view, navItems, pendingCount, currentUser
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 12, background: "#2d7d46", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🌿</div>
           <div>
-            <div style={{ color: "#fff", fontWeight: 800, fontSize: 15, letterSpacing: 0.3 }}>{chama?.name || "ChamaHive"}</div>
-            <div style={{ color: t.sidebarSub, fontSize: 11, fontWeight: 600 }}>{chama?.description || "Sacco Manager"}</div>
+            <div style={{ color: "#fff", fontWeight: 800, fontSize: 15, letterSpacing: 0.3 }}>ChamaHive</div>
+            <div style={{ color: t.sidebarSub, fontSize: 11, fontWeight: 600 }}>Sacco Manager</div>
           </div>
         </div>
         {isMobile && (
@@ -1325,7 +1325,6 @@ export default function ChamaApp({ session }) {
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
   const [needsProfile,  setNeedsProfile]  = useState(false);
-  const [chama,         setChama]         = useState(null);
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
@@ -1335,39 +1334,30 @@ export default function ChamaApp({ session }) {
     async function loadData() {
       try {
         setAppLoading(true);
+
         // 1. Get the logged-in member's profile
         let profile;
         try {
           profile = await fetchProfile(session.user.id);
         } catch (profileErr) {
-          // If profile fetch fails, assume they are a new user and need to complete setup
           setNeedsProfile(true);
           setAppLoading(false);
           return;
         }
         setCurrentUser(profile);
-        const chamaId = profile.chama_id;
 
-        // 2. Load all members (Isolated by chama_id)
-        const membersData = await fetchMembers(chamaId);
+        // 2. Load all members
+        const membersData = await fetchMembers();
         setMembers(membersData);
 
-        // 3. Load contributions for current year (Isolated by chama_id)
-        const contribData = await fetchContributions(new Date().getFullYear(), chamaId);
+        // 3. Load contributions for current year
+        const contribData = await fetchContributions(new Date().getFullYear());
         setContributions(contribData);
 
-        // 4. Load loans — split into active/completed and pending requests (Isolated by chama_id)
-        const loansData = await fetchLoans(chamaId);
+        // 4. Load loans
+        const loansData = await fetchLoans();
         setLoans(loansData.filter(l => l.status !== "pending"));
         setLoanRequests(loansData.filter(l => l.status === "pending"));
-
-        // 5. Load Chama details
-        if (chamaId) {
-          try {
-            const chamaData = await fetchChama(chamaId);
-            setChama(chamaData);
-          } catch { /* fail gracefully */ }
-        }
 
       } catch (e) {
         setAppError(e.message || "Failed to load data. Please refresh.");
