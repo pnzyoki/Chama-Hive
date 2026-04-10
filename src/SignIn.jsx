@@ -45,6 +45,7 @@ export default function SignIn({ onSignedIn }) {
     }
   };
 
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -123,6 +124,30 @@ export default function SignIn({ onSignedIn }) {
             {loading ? "Processing..." : (isSignUp ? "Sign Up" : "Sign In")}
           </button>
         </form>
+
+        <div style={{ marginTop: 24, fontSize: 14, color: "#8b949e" }}>
+          {isSignUp ? (
+            <>
+              Already have an account?{" "}
+              <button 
+                onClick={() => { setIsSignUp(false); setError(""); setMessage(""); }}
+                style={{ background: "none", border: "none", color: "#56d364", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+              >
+                Sign In
+              </button>
+            </>
+          ) : (
+            <>
+              Don't have an account?{" "}
+              <button 
+                onClick={() => { setIsSignUp(true); setError(""); setMessage(""); }}
+                style={{ background: "none", border: "none", color: "#56d364", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+              >
+                Sign Up
+              </button>
+            </>
+          )}
+        </div>
 
         <div style={{ marginTop: 24, fontSize: 14, color: "#8b949e" }}>
           {isSignUp ? (

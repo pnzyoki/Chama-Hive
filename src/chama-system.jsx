@@ -234,7 +234,8 @@ const DarkModeToggle = ({ darkMode, setDarkMode, t }) => (
 
 // ─── Views ────────────────────────────────────────────────────────────────────
 function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) {
-  const totalFunds  = members.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
+  const approvedMembers = members.filter(m => m.status === "approved");
+  const totalFunds  = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
   const totalLoaned = loans.filter(l => l.status === "active").reduce((s, l) => s + l.amount, 0);
   const totalOwed   = loans.filter(l => l.status === "active").reduce((s, l) => s + loanBalance(l), 0);
   const myContrib   = totalContrib(contributions, currentUser.id);
@@ -424,8 +425,10 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const privileged   = isPrivileged(currentUser.role);
   const isTreasurer  = currentUser.role === "treasurer";
   const canEdit      = privileged;
-  // Regular members only see their own record
-  const visibleMembers = privileged ? members : members.filter(m => m.id === currentUser.id);
+  // Regular members only see their own record; Admins see all APPROVED members
+  const visibleMembers = privileged 
+    ? members.filter(m => m.status === "approved") 
+    : members.filter(m => m.id === currentUser.id && m.status === "approved");
 
   const handleSave = async () => {
     if (!form.memberId || !form.month || !form.amount) return;
@@ -624,7 +627,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
           {error && <div style={{ background: t.dangerBg, color: "#e05a5a", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 16, border: "1px solid rgba(224,90,90,0.3)" }}>⚠️ {error}</div>}
           <Select label="Member" t={t} value={form.memberId} onChange={e => setForm({ ...form, memberId: e.target.value })}>
             <option value="">Select member...</option>
-            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {members.filter(m => m.status === "approved").map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </Select>
           <Select label="Month" t={t} value={form.month} onChange={e => setForm({ ...form, month: e.target.value })}>
             <option value="">Select month...</option>
@@ -898,8 +901,10 @@ function MemberForm({ form, setForm, errors, t, onSave, onCancel, saveLabel, set
 function MembersView({ members, setMembers, contributions, loans, currentUser, t }) {
   const isAdmin = currentUser.role === "admin";
   const privileged = isPrivileged(currentUser.role);
-  // Regular members only see their own card
-  const visibleMembers = privileged ? members : members.filter(m => m.id === currentUser.id);
+  // Regular members only see their own card; Admins see all APPROVED members here (Pending in own section)
+  const visibleMembers = privileged 
+    ? members.filter(m => m.status === "approved") 
+    : members.filter(m => m.id === currentUser.id && m.status === "approved");
 
   const EMPTY_FORM = { name: "", phone: "", email: "", idNumber: "", joinDate: new Date().toISOString().split("T")[0], nextOfKin: "", nextOfKinPhone: "" };
   const [modal,        setModal]        = useState(null); // "enroll"|"edit"|"remove"|"role"|null
@@ -1099,6 +1104,40 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
             </div>
           );
         })}
+
+        {/* Pending Approvals Section — captures anyone not approved/rejected */}
+        {privileged && members.some(m => m.status !== "approved" && m.status !== "rejected") && (
+          <div style={{ marginTop: 32, marginBottom: 16 }}>
+             <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: "#e07b39", textTransform: "uppercase", letterSpacing: 0.8, display: "flex", alignItems: "center", gap: 10 }}>
+               <span style={{ fontSize: 18 }}>⏳</span> Pending Approvals
+             </h3>
+             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+               {members.filter(m => m.status !== "approved" && m.status !== "rejected").map(member => (
+                 <div key={member.id} style={{ background: t.surface, borderRadius: 16, padding: 16, boxShadow: t.cardShadow, border: "2px solid #e07b39" }}>
+                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                     <Avatar initials={member.avatar} size={40} color={member.role} />
+                     <div style={{ flex: 1, minWidth: 0 }}>
+                       <div style={{ fontWeight: 800, fontSize: 15, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{member.name}</div>
+                       <div style={{ fontSize: 12, color: t.textSub }}>Joined {member.join_date}</div>
+                     </div>
+                   </div>
+                   <div style={{ display: "flex", gap: 8 }}>
+                     <Btn t={t} small variant="ghost" style={{ flex: 1 }} onClick={async () => {
+                       const { updateMember } = await import("./supabase");
+                       await updateMember(member.id, { status: "rejected" });
+                       setMembers(prev => prev.map(m => m.id === member.id ? { ...m, status: "rejected" } : m));
+                     }}>Deny</Btn>
+                     <Btn t={t} small style={{ flex: 1 }} onClick={async () => {
+                       const { updateMember } = await import("./supabase");
+                       await updateMember(member.id, { status: "approved" });
+                       setMembers(prev => prev.map(m => m.id === member.id ? { ...m, status: "approved" } : m));
+                     }}>Approve</Btn>
+                   </div>
+                 </div>
+               ))}
+             </div>
+          </div>
+        )}
       </div>
 
       {/* Enroll Modal — no role selector; always starts as Member */}
@@ -1249,6 +1288,7 @@ function CompleteProfile({ session, onComplete, onSignOut, t }) {
         id_number: form.idNumber.trim(),
         email: session.user.email,
         role: "member",
+        status: "pending", // New members must be approved
         join_date: new Date().toISOString().split("T")[0],
       });
       onComplete(); 
@@ -1369,6 +1409,8 @@ export default function ChamaApp({ session }) {
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
   const [needsProfile,  setNeedsProfile]  = useState(false);
+  const [isWaitingApproval, setIsWaitingApproval] = useState(false);
+  const [isRejected,        setIsRejected]        = useState(false);
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
@@ -1411,7 +1453,22 @@ export default function ChamaApp({ session }) {
           setAppLoading(false);
           return;
         }
-        setCurrentUser(profile);
+
+        // ── STRICT AUTHORIZATION GUARD ─────────────────────────────────────
+        // Only "approved" members can proceed to load system data.
+        if (profile && profile.status === "approved") {
+          setCurrentUser(profile);
+        } else if (profile && profile.status === "rejected") {
+          setIsRejected(true);
+          setAppLoading(false);
+          return;
+        } else {
+          // Default: includes 'pending', null, undefined, or any other value
+          setIsWaitingApproval(true);
+          setAppLoading(false);
+          return;
+        }
+        // ───────────────────────────────────────────────────────────────────
 
         // 2. Load all members
         const membersData = await fetchMembers();
@@ -1458,6 +1515,48 @@ export default function ChamaApp({ session }) {
       </div>
     </div>
   );
+
+  if (isWaitingApproval) {
+    return (
+      <div style={{ minHeight: "100vh", background: t.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ background: t.surface, borderRadius: 24, padding: "48px 32px", width: "100%", maxWidth: 440, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 24 }}>⏳</div>
+          <h2 style={{ margin: "0 0 12px", fontSize: 26, fontWeight: 800, color: t.text }}>Account Pending Approval</h2>
+          <p style={{ color: t.textSub, fontSize: 16, margin: "0 0 32px", lineHeight: 1.6 }}>
+            Welcome to ChamaHive! Your profile has been created successfully. An administrator needs to approve your account before you can access the dashboard.
+          </p>
+          <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 16, padding: "16px 20px", marginBottom: 32, textAlign: "left" }}>
+             <div style={{ fontSize: 13, fontWeight: 700, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Next Steps</div>
+             <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: t.text, lineHeight: 1.5 }}>
+               <li>Notify your chama treasurer or chairman.</li>
+               <li>Refresh this page once you've been approved.</li>
+             </ul>
+          </div>
+          <Btn t={t} style={{ width: "100%" }} onClick={() => window.location.reload()}>Refresh Status</Btn>
+          <button onClick={async () => await signOut()} style={{ background: "none", border: "none", color: t.textSub, fontSize: 14, marginTop: 20, cursor: "pointer", fontWeight: 700 }}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRejected) {
+    return (
+      <div style={{ minHeight: "100vh", background: t.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ background: t.surface, borderRadius: 24, padding: "48px 32px", width: "100%", maxWidth: 440, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 24 }}>🚫</div>
+          <h2 style={{ margin: "0 0 12px", fontSize: 26, fontWeight: 800, color: "#e05a5a" }}>Access Denied</h2>
+          <p style={{ color: t.textSub, fontSize: 16, margin: "0 0 32px", lineHeight: 1.6 }}>
+            Your registration request for ChamaHive was denied by the administrator. Please contact your chama chairman if you believe this is an error.
+          </p>
+          <button onClick={async () => await signOut()} style={{ background: "#c0392b", color: "#fff", border: "none", borderRadius: 12, padding: "14px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15, width: "100%" }}>
+            Go Back to Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) return null;
 
