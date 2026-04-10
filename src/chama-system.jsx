@@ -824,9 +824,13 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 }
 
 function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, currentUser, t }) {
-  const [modal,     setModal]     = useState(null);
-  const [form,      setForm]      = useState({ amount: "", purpose: "" });
-  const [repayForm, setRepayForm] = useState({ loanId: "", amount: "" });
+  const [modal,        setModal]        = useState(null);
+  const [form,         setForm]         = useState({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
+  const [repayForm,    setRepayForm]    = useState({ loanId: "", amount: "" });
+  const [approveTarget, setApproveTarget] = useState(null); // loan request being approved
+  const [approveForm,   setApproveForm]   = useState({ approval_date: new Date().toISOString().split("T")[0], due_date: "" });
+  const [editDatesTarget, setEditDatesTarget] = useState(null);
+  const [editDatesForm,   setEditDatesForm]   = useState({ date: "", approval_date: "", due_date: "" });
   const canManage = isPrivileged(currentUser.role);
   const memberName = (id) => members.find(m => m.id === id)?.name || "Unknown";
 
@@ -834,30 +838,72 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
     let amt = Number(form.amount);
     if (!amt || amt <= 0 || !form.purpose) return;
     amt = Math.min(amt, 100000000); // 100M clip
+    const appDate = form.application_date || new Date().toISOString().split("T")[0];
     try {
       const { createLoan } = await import("./supabase");
-      const newLoan = await createLoan({ member_id: currentUser.id, amount: amt, purpose: form.purpose, status: "pending", interest_rate: INTEREST_RATE, paid: 0 });
+      const newLoan = await createLoan({ member_id: currentUser.id, amount: amt, purpose: form.purpose, status: "pending", interest_rate: INTEREST_RATE, paid: 0, date: appDate });
       setLoanRequests(prev => [...prev, newLoan]);
       showToast("Loan request submitted for approval.");
     } catch {
       // optimistic fallback
-      setLoanRequests(prev => [...prev, { id: Date.now(), member_id: currentUser.id, amount: amt, purpose: form.purpose, date: new Date().toISOString().split("T")[0], status: "pending" }]);
+      setLoanRequests(prev => [...prev, { id: Date.now(), member_id: currentUser.id, amount: amt, purpose: form.purpose, date: appDate, status: "pending" }]);
       showToast("Loan request submitted for approval.");
     }
-    setModal(null); setForm({ amount: "", purpose: "" });
+    setModal(null); setForm({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
   };
 
-  const handleApproveLoan = async (req) => {
-    const dueDate = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+  const openApproveModal = (req) => {
+    const defaultDue = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+    setApproveTarget(req);
+    setApproveForm({ approval_date: new Date().toISOString().split("T")[0], due_date: defaultDue });
+    setModal("approve");
+  };
+
+  const handleApproveLoan = async () => {
+    if (!approveTarget) return;
+    const req = approveTarget;
+    const dueDate = approveForm.due_date || new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+    const approvalDate = approveForm.approval_date || new Date().toISOString().split("T")[0];
     try {
       const { updateLoan } = await import("./supabase");
-      const updated = await updateLoan(req.id, { status: "active", due_date: dueDate, approved_by: currentUser.id });
+      const updated = await updateLoan(req.id, { status: "active", due_date: dueDate, approved_by: currentUser.id, approval_date: approvalDate });
       setLoans(prev => [...prev, updated]);
       setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "active" } : r));
     } catch {
-      setLoans(prev => [...prev, { ...req, status: "active", due_date: dueDate, approved_by: currentUser.id }]);
+      setLoans(prev => [...prev, { ...req, status: "active", due_date: dueDate, approved_by: currentUser.id, approval_date: approvalDate }]);
       setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "active" } : r));
     }
+    setModal(null); setApproveTarget(null);
+    showToast("Loan approved successfully.");
+  };
+
+  const openEditDates = (loan) => {
+    setEditDatesTarget(loan);
+    setEditDatesForm({
+      date:          loan.date          || "",
+      approval_date: loan.approval_date  || "",
+      due_date:      loan.due_date       || "",
+    });
+    setModal("editdates");
+  };
+
+  const handleSaveDates = async () => {
+    if (!editDatesTarget) return;
+    const updates = {};
+    if (editDatesForm.date)          updates.date          = editDatesForm.date;
+    if (editDatesForm.approval_date) updates.approval_date = editDatesForm.approval_date;
+    if (editDatesForm.due_date)      updates.due_date      = editDatesForm.due_date;
+    try {
+      const { updateLoan } = await import("./supabase");
+      const updated = await updateLoan(editDatesTarget.id, updates);
+      setLoans(prev => prev.map(l => l.id === editDatesTarget.id ? { ...l, ...updated } : l));
+      showToast("Loan dates updated successfully.");
+    } catch {
+      // optimistic
+      setLoans(prev => prev.map(l => l.id === editDatesTarget.id ? { ...l, ...updates } : l));
+      showToast("Loan dates updated.");
+    }
+    setModal(null); setEditDatesTarget(null);
   };
 
   const handleReject = async (req) => {
@@ -921,7 +967,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn t={t} variant="danger" small onClick={() => handleReject(req)}>Reject</Btn>
-                <Btn t={t} small onClick={() => handleApproveLoan(req)}>Approve</Btn>
+                <Btn t={t} small onClick={() => openApproveModal(req)}>Approve</Btn>
               </div>
             </div>
           ))}
@@ -938,14 +984,21 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           return (
             <div key={loan.id} style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 12, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, borderLeft: "4px solid #e07b39" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: t.text }}>{memberName(loan.member_id)}</div>
                   <div style={{ fontSize: 13, color: t.textSub }}>{loan.purpose} · Approved by {loan.approved_by}</div>
-                  <div style={{ fontSize: 12, color: t.textMuted, marginTop: 2 }}>Taken: {loan.date} · Due: {loan.due_date}</div>
+                  <div style={{ fontSize: 12, color: t.textMuted, marginTop: 2 }}>Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''} · Due: {loan.due_date}</div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, fontSize: 20, color: "#e05a5a" }}>{fmtKES(balance)}</div>
-                  <div style={{ fontSize: 12, color: t.textMuted }}>outstanding</div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 800, fontSize: 20, color: "#e05a5a" }}>{fmtKES(balance)}</div>
+                    <div style={{ fontSize: 12, color: t.textMuted }}>outstanding</div>
+                  </div>
+                  {canManage && (
+                    <button onClick={() => openEditDates(loan)} style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: t.textSub, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      ✏ Edit Dates
+                    </button>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 16, fontSize: 13, marginBottom: 10, flexWrap: "wrap" }}>
@@ -966,12 +1019,19 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
         <div>
           <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8 }}>Completed Loans</h3>
           {visibleLoans.filter(l => l.status === "completed").map(loan => (
-            <div key={loan.id} style={{ background: t.completedLoanBg, borderRadius: 14, padding: 16, marginBottom: 10, borderLeft: "4px solid #2d7d46", display: "flex", justifyContent: "space-between", border: `1px solid ${t.border}` }}>
-              <div>
+            <div key={loan.id} style={{ background: t.completedLoanBg, borderRadius: 14, padding: 16, marginBottom: 10, borderLeft: "4px solid #2d7d46", display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${t.border}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: t.completedLoanText }}>{memberName(loan.member_id)} — {loan.purpose}</div>
-                <div style={{ fontSize: 12, color: t.textMuted }}>{loan.date} · {fmtKES(loan.amount)} original</div>
+                <div style={{ fontSize: 12, color: t.textMuted }}>Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''} · {fmtKES(loan.amount)} original</div>
               </div>
-              <span style={{ background: t.successBg, color: "#2d7d46", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, alignSelf: "center" }}>✓ Cleared</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                {canManage && (
+                  <button onClick={() => openEditDates(loan)} style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: t.textSub, cursor: "pointer" }}>
+                    ✏ Edit Dates
+                  </button>
+                )}
+                <span style={{ background: t.successBg, color: "#2d7d46", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>✓ Cleared</span>
+              </div>
             </div>
           ))}
         </div>
@@ -984,9 +1044,26 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           </div>
           <Input t={t} label="Amount (KES)" type="number" placeholder="10000" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
           <Input t={t} label="Purpose" placeholder="e.g. Business capital, Medical, School fees" value={form.purpose} onChange={e => setForm({ ...form, purpose: e.target.value })} />
+          <Input t={t} label="Application Date" type="date" value={form.application_date} onChange={e => setForm({ ...form, application_date: e.target.value })} />
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn t={t} variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn t={t} onClick={handleRequestLoan}>Submit Request</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "approve" && approveTarget && (
+        <Modal title="Approve Loan" onClose={() => { setModal(null); setApproveTarget(null); }} t={t}>
+          <div style={{ background: t.surface2, borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: t.textSub, border: `1px solid ${t.border}` }}>
+            <div style={{ fontWeight: 700, color: t.text, marginBottom: 4 }}>{memberName(approveTarget.member_id)} — {fmtKES(approveTarget.amount)}</div>
+            <div>{approveTarget.purpose}</div>
+            <div style={{ marginTop: 4, fontSize: 12 }}>Applied: {approveTarget.date}</div>
+          </div>
+          <Input t={t} label="Approval Date" type="date" value={approveForm.approval_date} onChange={e => setApproveForm({ ...approveForm, approval_date: e.target.value })} />
+          <Input t={t} label="Due Date" type="date" value={approveForm.due_date} onChange={e => setApproveForm({ ...approveForm, due_date: e.target.value })} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn t={t} variant="ghost" onClick={() => { setModal(null); setApproveTarget(null); }}>Cancel</Btn>
+            <Btn t={t} onClick={handleApproveLoan}>✓ Confirm Approval</Btn>
           </div>
         </Modal>
       )}
@@ -1003,6 +1080,22 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn t={t} variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn t={t} onClick={handleRepay}>Record Payment</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "editdates" && editDatesTarget && (
+        <Modal title="Edit Loan Dates" onClose={() => { setModal(null); setEditDatesTarget(null); }} t={t}>
+          <div style={{ background: t.surface2, borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: t.textSub, border: `1px solid ${t.border}` }}>
+            <div style={{ fontWeight: 700, color: t.text, marginBottom: 2 }}>{memberName(editDatesTarget.member_id)} — {fmtKES(editDatesTarget.amount)}</div>
+            <div style={{ fontSize: 12 }}>{editDatesTarget.purpose}</div>
+          </div>
+          <Input t={t} label="Application Date" type="date" value={editDatesForm.date} onChange={e => setEditDatesForm({ ...editDatesForm, date: e.target.value })} />
+          <Input t={t} label="Approval Date" type="date" value={editDatesForm.approval_date} onChange={e => setEditDatesForm({ ...editDatesForm, approval_date: e.target.value })} />
+          <Input t={t} label="Due Date" type="date" value={editDatesForm.due_date} onChange={e => setEditDatesForm({ ...editDatesForm, due_date: e.target.value })} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn t={t} variant="ghost" onClick={() => { setModal(null); setEditDatesTarget(null); }}>Cancel</Btn>
+            <Btn t={t} onClick={handleSaveDates}>💾 Save Changes</Btn>
           </div>
         </Modal>
       )}
