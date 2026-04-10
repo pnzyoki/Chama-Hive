@@ -455,6 +455,24 @@ function ContributionsView({ members, contributions, setContributions, currentUs
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
+      const data = members.map(m => {
+        const row = { Name: m.name };
+        MONTHS.forEach(mo => row[mo] = "");
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Contributions");
+      XLSX.writeFile(wb, "ChamaHive_Contributions_Template.xlsx");
+    } catch (err) {
+      console.error("Template download failed:", err);
+      setXlStatus("❌ Failed to generate template.");
+    }
+  };
+
   // Excel upload: parse CSV/XLSX via SheetJS
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -558,14 +576,23 @@ function ContributionsView({ members, contributions, setContributions, currentUs
           <div style={{ display: "flex", gap: 10 }}>
             {/* Treasurer Excel upload */}
             {(isTreasurer || currentUser.role === "admin" || currentUser.role === "chairman") && (
-              <label style={{
-                display: "flex", alignItems: "center", gap: 7, background: t.surface3,
-                border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
-                cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
-              }}>
-                📊 Upload Excel
-                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} style={{ display: "none" }} />
-              </label>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={handleDownloadTemplate} style={{
+                  display: "flex", alignItems: "center", gap: 7, background: t.surface3,
+                  border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
+                  cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
+                }}>
+                  📥 Download Template
+                </button>
+                <label style={{
+                  display: "flex", alignItems: "center", gap: 7, background: t.surface3,
+                  border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
+                  cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
+                }}>
+                  📊 Upload Excel
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} style={{ display: "none" }} />
+                </label>
+              </div>
             )}
             <Btn t={t} onClick={() => setModal("add")}>+ Record Payment</Btn>
           </div>
@@ -1345,6 +1372,29 @@ export default function ChamaApp({ session }) {
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
+
+  // ── 1-Minute Inactivity Auto-Logout ───────────────────────────────────────
+  useEffect(() => {
+    let timeoutId;
+    
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        signOut();
+      }, 60000); // 1 minute
+    };
+
+    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+    events.forEach(name => document.addEventListener(name, resetTimer));
+    
+    // Initial start
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(name => document.removeEventListener(name, resetTimer));
+    };
+  }, [session]);
 
   // ── Load all data from Supabase on mount ───────────────────────────────────
   useEffect(() => {
