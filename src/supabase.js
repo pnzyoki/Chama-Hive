@@ -97,7 +97,10 @@ export async function updateLoan(id, updates) {
     .select()
     .single();
     
-  if (error) throw error;
+  if (error) {
+    console.error("updateLoan error:", error, "Payload:", updates);
+    throw error;
+  }
   return data;
 }
 

@@ -843,13 +843,11 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       const { createLoan } = await import("./supabase");
       const newLoan = await createLoan({ member_id: currentUser.id, amount: amt, purpose: form.purpose, status: "pending", interest_rate: INTEREST_RATE, paid: 0, date: appDate });
       setLoanRequests(prev => [...prev, newLoan]);
+      setModal(null); setForm({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
       showToast("Loan request submitted for approval.");
-    } catch {
-      // optimistic fallback
-      setLoanRequests(prev => [...prev, { id: Date.now(), member_id: currentUser.id, amount: amt, purpose: form.purpose, date: appDate, status: "pending" }]);
-      showToast("Loan request submitted for approval.");
+    } catch (err) {
+      showToast("Request failed: " + err.message, "error");
     }
-    setModal(null); setForm({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
   };
 
   const openApproveModal = (req) => {
@@ -869,12 +867,11 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       const updated = await updateLoan(req.id, { status: "active", due_date: dueDate, approved_by: currentUser.id, approval_date: approvalDate });
       setLoans(prev => [...prev, updated]);
       setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "active" } : r));
-    } catch {
-      setLoans(prev => [...prev, { ...req, status: "active", due_date: dueDate, approved_by: currentUser.id, approval_date: approvalDate }]);
-      setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "active" } : r));
+      setModal(null); setApproveTarget(null);
+      showToast("Loan approved successfully.");
+    } catch (err) {
+      showToast("Approval failed: " + err.message, "error");
     }
-    setModal(null); setApproveTarget(null);
-    showToast("Loan approved successfully.");
   };
 
   const openEditDates = (loan) => {
@@ -897,21 +894,22 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       const { updateLoan } = await import("./supabase");
       const updated = await updateLoan(editDatesTarget.id, updates);
       setLoans(prev => prev.map(l => l.id === editDatesTarget.id ? { ...l, ...updated } : l));
+      setModal(null); setEditDatesTarget(null);
       showToast("Loan dates updated successfully.");
-    } catch {
-      // optimistic
-      setLoans(prev => prev.map(l => l.id === editDatesTarget.id ? { ...l, ...updates } : l));
-      showToast("Loan dates updated.");
+    } catch (err) {
+      showToast("Update failed: " + err.message, "error");
     }
-    setModal(null); setEditDatesTarget(null);
   };
 
   const handleReject = async (req) => {
     try {
       const { updateLoan } = await import("./supabase");
       await updateLoan(req.id, { status: "rejected" });
-    } catch { /* optimistic */ }
-    setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "rejected" } : r));
+      setLoanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: "rejected" } : r));
+      showToast("Loan rejected.");
+    } catch (err) {
+      showToast("Reject failed: " + err.message, "error");
+    }
   };
 
   const handleRepay = async () => {
@@ -928,16 +926,11 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
         await updateLoan(repayForm.loanId, { paid: newPaid, status: newStatus });
         setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, paid: newPaid, status: newStatus } : l));
       }
+      setModal(null); setRepayForm({ loanId: "", amount: "" });
       showToast("Repayment recorded successfully.");
-    } catch {
-      setLoans(prev => prev.map(l => {
-        if (l.id !== repayForm.loanId) return l;
-        const newPaid = l.paid + amt;
-        return { ...l, paid: newPaid, status: loanBalance({ ...l, paid: newPaid }) <= 0 ? "completed" : "active" };
-      }));
-      showToast("Repayment recorded.");
+    } catch (err) {
+      showToast("Repayment failed: " + err.message, "error");
     }
-    setModal(null); setRepayForm({ loanId: "", amount: "" });
   };
 
   const pendingRequests = loanRequests.filter(r => r.status === "pending");
@@ -1207,31 +1200,37 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
       const { updateMember } = await import("./supabase");
       const saved = await updateMember(editTarget.id, updates);
       setMembers(prev => prev.map(m => m.id === editTarget.id ? saved : m));
-    } catch {
-      setMembers(prev => prev.map(m => m.id === editTarget.id ? { ...m, ...updates } : m));
+      setModal(null); setErrors({});
+      showToast("Member updated successfully.");
+    } catch (err) {
+      showToast("Edit failed: " + err.message, "error");
     }
-    setModal(null); setErrors({});
   };
 
   const handleRemove = async () => {
     try {
       const { deleteMember } = await import("./supabase");
       await deleteMember(removeTarget.id);
-    } catch { /* optimistic */ }
-    setMembers(prev => prev.filter(m => m.id !== removeTarget.id));
-    setModal(null); setRemoveTarget(null);
+      setMembers(prev => prev.filter(m => m.id !== removeTarget.id));
+      setModal(null); setRemoveTarget(null);
+      showToast("Member removed.");
+    } catch (err) {
+      showToast("Remove failed: " + err.message, "error");
+    }
   };
 
   const handleAssignRole = async () => {
     try {
       const { updateMember } = await import("./supabase");
       await updateMember(roleTarget.id, { role: assignedRole });
-    } catch { /* optimistic */ }
-    setMembers(prev => prev.map(m => m.id === roleTarget.id ? { ...m, role: assignedRole } : m));
-    showToast(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
-    setSuccess(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
-    setModal(null); setRoleTarget(null);
-    setTimeout(() => setSuccess(""), 4000);
+      setMembers(prev => prev.map(m => m.id === roleTarget.id ? { ...m, role: assignedRole } : m));
+      showToast(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
+      setSuccess(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
+      setModal(null); setRoleTarget(null);
+      setTimeout(() => setSuccess(""), 4000);
+    } catch (err) {
+      showToast("Role assignment failed: " + err.message, "error");
+    }
   };
 
   const openEdit = (member) => {
