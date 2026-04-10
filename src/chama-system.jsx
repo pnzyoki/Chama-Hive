@@ -70,7 +70,7 @@ const THEMES = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const MONTHLY_TARGET = 2000;
+const MONTHLY_TARGET = 200;
 const INTEREST_RATE  = 0.10;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -420,6 +420,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const [form,        setForm]       = useState({ memberId: "", month: "", amount: "" });
   const [xlStatus,    setXlStatus]   = useState(""); // feedback for excel upload
   const [xlPreview,   setXlPreview]  = useState(null); // parsed rows before confirm
+  const [error,       setError]      = useState("");
   const privileged   = isPrivileged(currentUser.role);
   const isTreasurer  = currentUser.role === "treasurer";
   const canEdit      = privileged;
@@ -429,6 +430,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const handleSave = async () => {
     if (!form.memberId || !form.month || !form.amount) return;
     const year = new Date().getFullYear();
+    setError("");
     try {
       const { upsertContribution } = await import("./supabase");
       await upsertContribution(form.memberId, form.month, year, Number(form.amount), currentUser.id);
@@ -437,11 +439,12 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         const updated = prev.filter(c => !(c.member_id === form.memberId && c.month === form.month && c.year === year));
         return [...updated, { member_id: form.memberId, month: form.month, year, amount: Number(form.amount) }];
       });
-    } catch {
-      // silently keep local update even if save fails — will sync on next load
+      setModal(null);
+      setForm({ memberId: "", month: "", amount: "" });
+    } catch (err) {
+      setError(err.message || "Failed to save contribution. Check console for details.");
+      console.error("Save failure:", err);
     }
-    setModal(null);
-    setForm({ memberId: "", month: "", amount: "" });
   };
 
   // Excel upload: parse CSV/XLSX via SheetJS
@@ -580,10 +583,10 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 
       {/* Member cards — privileged see all, regular see only own */}
       {visibleMembers.map(member => <MemberCard key={member.id} member={member} />)}
-
       {/* Manual entry modal */}
       {modal === "add" && (
         <Modal title="Record Contribution" onClose={() => setModal(null)} t={t}>
+          {error && <div style={{ background: t.dangerBg, color: "#e05a5a", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 16, border: "1px solid rgba(224,90,90,0.3)" }}>⚠️ {error}</div>}
           <Select label="Member" t={t} value={form.memberId} onChange={e => setForm({ ...form, memberId: e.target.value })}>
             <option value="">Select member...</option>
             {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -1259,8 +1262,8 @@ function SidebarContent({ t, isMobile, view, navItems, pendingCount, currentUser
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 12, background: "#2d7d46", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🌿</div>
           <div>
-            <div style={{ color: "#fff", fontWeight: 800, fontSize: 15, letterSpacing: 0.3 }}>ChamaHive</div>
-            <div style={{ color: t.sidebarSub, fontSize: 11, fontWeight: 600 }}>Sacco Manager</div>
+            <div style={{ color: "#fff", fontWeight: 800, fontSize: 15, letterSpacing: 0.3 }}>{chama?.name || "ChamaHive"}</div>
+            <div style={{ color: t.sidebarSub, fontSize: 11, fontWeight: 600 }}>{chama?.description || "Sacco Manager"}</div>
           </div>
         </div>
         {isMobile && (
@@ -1322,6 +1325,7 @@ export default function ChamaApp({ session }) {
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
   const [needsProfile,  setNeedsProfile]  = useState(false);
+  const [chama,         setChama]         = useState(null);
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
@@ -1331,7 +1335,6 @@ export default function ChamaApp({ session }) {
     async function loadData() {
       try {
         setAppLoading(true);
-
         // 1. Get the logged-in member's profile
         let profile;
         try {
@@ -1343,19 +1346,28 @@ export default function ChamaApp({ session }) {
           return;
         }
         setCurrentUser(profile);
+        const chamaId = profile.chama_id;
 
-        // 2. Load all members (RLS filters automatically based on role)
-        const membersData = await fetchMembers();
+        // 2. Load all members (Isolated by chama_id)
+        const membersData = await fetchMembers(chamaId);
         setMembers(membersData);
 
-        // 3. Load contributions for current year
-        const contribData = await fetchContributions(new Date().getFullYear());
+        // 3. Load contributions for current year (Isolated by chama_id)
+        const contribData = await fetchContributions(new Date().getFullYear(), chamaId);
         setContributions(contribData);
 
-        // 4. Load loans — split into active/completed and pending requests
-        const loansData = await fetchLoans();
+        // 4. Load loans — split into active/completed and pending requests (Isolated by chama_id)
+        const loansData = await fetchLoans(chamaId);
         setLoans(loansData.filter(l => l.status !== "pending"));
         setLoanRequests(loansData.filter(l => l.status === "pending"));
+
+        // 5. Load Chama details
+        if (chamaId) {
+          try {
+            const chamaData = await fetchChama(chamaId);
+            setChama(chamaData);
+          } catch { /* fail gracefully */ }
+        }
 
       } catch (e) {
         setAppError(e.message || "Failed to load data. Please refresh.");

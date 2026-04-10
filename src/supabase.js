@@ -18,32 +18,26 @@ export async function fetchProfile(authId) {
   return data;
 }
 
-export async function fetchMembers() {
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .order("name", { ascending: true });
-    
+export async function fetchMembers(chamaId) {
+  let query = supabase.from("members").select("*").order("name", { ascending: true });
+  if (chamaId) query = query.eq("chama_id", chamaId);
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
 
-export async function fetchContributions(year) {
-  const { data, error } = await supabase
-    .from("contributions")
-    .select("*")
-    .eq("year", year);
-    
+export async function fetchContributions(year, chamaId) {
+  let query = supabase.from("contributions").select("*").eq("year", year);
+  if (chamaId) query = query.eq("chama_id", chamaId);
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
 
-export async function fetchLoans() {
-  const { data, error } = await supabase
-    .from("loans")
-    .select("*")
-    .order("date", { ascending: false });
-    
+export async function fetchLoans(chamaId) {
+  let query = supabase.from("loans").select("*").order("date", { ascending: false });
+  if (chamaId) query = query.eq("chama_id", chamaId);
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
@@ -129,26 +123,38 @@ export async function addRepayment(loanId, amount, userId) {
 
 export async function upsertContribution(memberId, month, year, amount, userId) {
   // Try to find if it exists
-  const { data: existing } = await supabase
+  const { data: existing, error: fetchErr } = await supabase
     .from("contributions")
     .select("id")
     .eq("member_id", memberId)
     .eq("month", month)
     .eq("year", year)
-    .single();
+    .maybeSingle();
+
+  if (fetchErr) throw fetchErr;
     
   if (existing) {
     const { error } = await supabase
       .from("contributions")
-      .update({ amount, logged_by: userId })
+      .update({ amount })
       .eq("id", existing.id);
     if (error) throw error;
   } else {
     const { error } = await supabase
       .from("contributions")
-      .insert([{ member_id: memberId, month, year, amount, logged_by: userId }]);
+      .insert([{ member_id: memberId, month, year, amount }]);
     if (error) throw error;
   }
+}
+
+export async function fetchChama(chamaId) {
+  const { data, error } = await supabase
+    .from("chamas")
+    .select("*")
+    .eq("id", chamaId)
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function signOut() {
