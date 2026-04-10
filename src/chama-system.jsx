@@ -2,6 +2,40 @@ import { useState, useEffect } from "react";
 import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, signOut } from "./supabase";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
+export const toastEmitter = new EventTarget();
+export const showToast = (text, type = "success") => {
+  toastEmitter.dispatchEvent(new CustomEvent("show-toast", { detail: { text, type } }));
+};
+
+const GlobalToast = () => {
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    let timeoutId;
+    const handler = (e) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      setToast(e.detail);
+      timeoutId = setTimeout(() => setToast(null), 4000);
+    };
+    toastEmitter.addEventListener("show-toast", handler);
+    return () => {
+      toastEmitter.removeEventListener("show-toast", handler);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+  if (!toast) return null;
+  const isError = toast.type === "error";
+  return (
+    <div className="animate-slide-up" style={{
+      position: "fixed", bottom: 24, right: 24, zIndex: 9999,
+      background: isError ? "#FFEAEA" : "#E8F5ED", border: `1px solid ${isError ? "#E05A5A" : "#2D7D46"}`,
+      color: isError ? "#E05A5A" : "#2D7D46", padding: "14px 24px", borderRadius: 12,
+      fontWeight: 700, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", display: "flex", gap: 10, alignItems: "center"
+    }}>
+       {isError ? "⚠️" : "✅"} {toast.text}
+    </div>
+  );
+};
+
 // ─── Theme Definitions ────────────────────────────────────────────────────────
 const THEMES = {
   light: {
@@ -138,8 +172,8 @@ const StatCard = ({ label, value, sub, accent, t }) => (
 const Modal = ({ title, onClose, children, t }) => {
   const isMobile = window.innerWidth < 768;
   return (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center" }}>
-    <div style={{
+  <div className="animate-fade-in" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center" }}>
+    <div className="animate-slide-up" style={{
       background: t.surface,
       borderRadius: isMobile ? "20px 20px 0 0" : 20,
       padding: isMobile ? "24px 20px 32px" : 32,
@@ -176,8 +210,9 @@ const Select = ({ label, t, children, ...props }) => (
     {label && <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: t.textSub, marginBottom: 6, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</label>}
     <select {...props} style={{
       width: "100%", padding: "10px 14px", border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 14,
-      fontFamily: "inherit", background: t.inputBg, color: t.text, outline: "none",
-    }}>{children}</select>
+      fontFamily: "inherit", background: t.inputBg, color: t.text, outline: "none", transition: "border-color 0.2s",
+      ...props.style
+    }} onFocus={e => e.target.style.borderColor = "#2d7d46"} onBlur={e => e.target.style.borderColor = t.border}>{children}</select>
   </div>
 );
 
@@ -481,6 +516,11 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setXlStatus("❌ File is too large. Maximum size is 2MB.");
+      e.target.value = "";
+      return;
+    }
     setXlStatus("Reading file…");
     try {
       const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
@@ -496,8 +536,11 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         if (!member) return;
         const updates = {};
         MONTHS.forEach(mo => {
-          const val = parseFloat(row[mo] || row[mo.toLowerCase()] || 0);
-          if (!isNaN(val) && val > 0) updates[mo] = val;
+          let val = parseFloat(row[mo] || row[mo.toLowerCase()] || 0);
+          if (!isNaN(val) && val > 0) {
+            val = Math.min(val, 100000000); // 100M cap
+            updates[mo] = val;
+          }
         });
         if (Object.keys(updates).length) preview.push({ member, updates });
       });
@@ -538,11 +581,14 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 
       setXlPreview(null);
       setModal(null);
+      showToast(`Successfully pushed ${updatesToPush.length} contributions to Supabase.`);
       setXlStatus(`✅ Successfully pushed ${updatesToPush.length} contributions to Supabase.`);
       setTimeout(() => setXlStatus(""), 5000);
     } catch (err) {
       console.error("Bulk upload failed:", err);
+      showToast("Failed to push to Supabase. Check console.", "error");
       setXlStatus("❌ Failed to push to Supabase. Check console.");
+      setTimeout(() => setXlStatus(""), 5000);
     }
   };
 
@@ -714,14 +760,18 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
   const memberName = (id) => members.find(m => m.id === id)?.name || "Unknown";
 
   const handleRequestLoan = async () => {
-    if (!form.amount || !form.purpose) return;
+    let amt = Number(form.amount);
+    if (!amt || amt <= 0 || !form.purpose) return;
+    amt = Math.min(amt, 100000000); // 100M clip
     try {
       const { createLoan } = await import("./supabase");
-      const newLoan = await createLoan({ member_id: currentUser.id, amount: Number(form.amount), purpose: form.purpose, status: "pending", interest_rate: INTEREST_RATE, paid: 0 });
+      const newLoan = await createLoan({ member_id: currentUser.id, amount: amt, purpose: form.purpose, status: "pending", interest_rate: INTEREST_RATE, paid: 0 });
       setLoanRequests(prev => [...prev, newLoan]);
+      showToast("Loan request submitted for approval.");
     } catch {
       // optimistic fallback
-      setLoanRequests(prev => [...prev, { id: Date.now(), member_id: currentUser.id, amount: Number(form.amount), purpose: form.purpose, date: new Date().toISOString().split("T")[0], status: "pending" }]);
+      setLoanRequests(prev => [...prev, { id: Date.now(), member_id: currentUser.id, amount: amt, purpose: form.purpose, date: new Date().toISOString().split("T")[0], status: "pending" }]);
+      showToast("Loan request submitted for approval.");
     }
     setModal(null); setForm({ amount: "", purpose: "" });
   };
@@ -748,23 +798,27 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
   };
 
   const handleRepay = async () => {
-    if (!repayForm.loanId || !repayForm.amount) return;
+    let amt = Number(repayForm.amount);
+    if (!repayForm.loanId || !amt || amt <= 0) return;
+    amt = Math.min(amt, 100000000);
     try {
       const { addRepayment, updateLoan } = await import("./supabase");
-      await addRepayment(repayForm.loanId, Number(repayForm.amount), currentUser.id);
+      await addRepayment(repayForm.loanId, amt, currentUser.id);
       const loan = loans.find(l => l.id === repayForm.loanId);
       if (loan) {
-        const newPaid = loan.paid + Number(repayForm.amount);
+        const newPaid = loan.paid + amt;
         const newStatus = loanBalance({ ...loan, paid: newPaid }) <= 0 ? "completed" : "active";
         await updateLoan(repayForm.loanId, { paid: newPaid, status: newStatus });
         setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, paid: newPaid, status: newStatus } : l));
       }
+      showToast("Repayment recorded successfully.");
     } catch {
       setLoans(prev => prev.map(l => {
         if (l.id !== repayForm.loanId) return l;
-        const newPaid = l.paid + Number(repayForm.amount);
+        const newPaid = l.paid + amt;
         return { ...l, paid: newPaid, status: loanBalance({ ...l, paid: newPaid }) <= 0 ? "completed" : "active" };
       }));
+      showToast("Repayment recorded.");
     }
     setModal(null); setRepayForm({ loanId: "", amount: "" });
   };
@@ -966,6 +1020,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
       const { createMember } = await import("./supabase");
       const saved = await createMember(nm);
       setMembers(prev => [...prev, saved]);
+      showToast(`${saved.name} enrolled as Member. You can now assign their role using the 🏷 button.`);
       setSuccess(`${saved.name} enrolled as Member. You can now assign their role using the 🏷 button.`);
     } catch (err) {
       setErrors({ name: err.message || "Failed to enroll member." });
@@ -1009,6 +1064,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
       await updateMember(roleTarget.id, { role: assignedRole });
     } catch { /* optimistic */ }
     setMembers(prev => prev.map(m => m.id === roleTarget.id ? { ...m, role: assignedRole } : m));
+    showToast(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
     setSuccess(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
     setModal(null); setRoleTarget(null);
     setTimeout(() => setSuccess(""), 4000);
@@ -1037,7 +1093,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
 
       {/* Success toast */}
       {success && (
-        <div style={{ background: t.successBg, border: "1.5px solid #2d7d46", borderRadius: 12, padding: "11px 16px", marginBottom: 18, fontSize: 13, color: "#2d7d46", fontWeight: 700 }}>
+        <div className="animate-fade-in" style={{ background: t.successBg, border: "1.5px solid #2d7d46", borderRadius: 12, padding: "11px 16px", marginBottom: 18, fontSize: 13, color: "#2d7d46", fontWeight: 700 }}>
           ✅ {success}
         </div>
       )}
@@ -1523,13 +1579,14 @@ export default function ChamaApp({ session }) {
 
   // ── Loading screen ─────────────────────────────────────────────────────────
   if (appLoading) return (
-    <div style={{ minHeight: "100vh", background: t.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="animate-fade-in" style={{ minHeight: "100vh", background: t.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>🌿</div>
-        <div style={{ color: t.textSub, fontSize: 16 }}>Loading your chama…</div>
+        <div className="animate-pulse" style={{ fontSize: 40, marginBottom: 16 }}>🌿</div>
+        <div style={{ color: t.textSub, fontSize: 16, letterSpacing: 0.5 }}>Loading your chama…</div>
       </div>
     </div>
   );
+
 
   if (needsProfile) {
     return <CompleteProfile session={session} t={t} onComplete={() => setNeedsProfile(false)} onSignOut={async () => { await signOut(); }} />;
@@ -1673,6 +1730,7 @@ export default function ChamaApp({ session }) {
         transition: "margin 0.3s",
         minWidth: 0,
       }}>
+        <GlobalToast />
         {/* Desktop top bar */}
         {!isMobile && (
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginBottom: 28 }}>
