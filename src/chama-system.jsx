@@ -340,6 +340,9 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const myContrib   = totalContribYear(contributions, currentUser.id, activeYear);
   const myLoans     = loans.filter(l => l.member_id === currentUser.id && l.status === "active");
   const privileged  = isPrivileged(currentUser.role);
+  const visibleMembers = privileged 
+    ? members.filter(m => m.status === "approved") 
+    : members.filter(m => m.id === currentUser.id && m.status === "approved");
 
   // Data for charts
   const fundsData = [
@@ -405,7 +408,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((member, i) => (
+                  {visibleMembers.map((member, i) => (
                     <tr key={member.id} style={{ background: i % 2 === 0 ? t.rowEven : t.rowOdd }}>
                       <td style={{ padding: "10px 12px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
