@@ -152,19 +152,34 @@ const calculateDebt = (member, contributions, activeYear) => {
   const joinYear = joinDate.getFullYear();
   const joinMonth = joinDate.getMonth(); // 0 = Jan, 11 = Dec
   
-  if (joinYear >= activeYear) return 0; // No past debt if joined this year or later
+  const currentCalendarYear = new Date().getFullYear();
+  const currentCalendarMonth = new Date().getMonth();
   
-  const yearsActive = (activeYear - 1) - joinYear; 
-  if (yearsActive < 0) return 0;
-
-  const monthsInJoinYear = 12 - joinMonth;
-  const expectedPastTotal = (monthsInJoinYear + (yearsActive * 12)) * MONTHLY_TARGET;
+  let targetYear = activeYear;
+  let targetMonth = 11;
   
-  const actualPastTotal = contributions.reduce((sum, c) => 
-    (c.member_id === member.id && c.year < activeYear) ? sum + c.amount : sum
+  if (targetYear >= currentCalendarYear) {
+    targetYear = currentCalendarYear;
+    targetMonth = currentCalendarMonth;
+  }
+  
+  if (joinYear > targetYear || (joinYear === targetYear && joinMonth > targetMonth)) {
+    return 0; // Joined after the cutoff
+  }
+  
+  let expectedMonths = 0;
+  if (joinYear === targetYear) {
+    expectedMonths = targetMonth - joinMonth + 1;
+  } else {
+    expectedMonths = (12 - joinMonth) + ((targetYear - 1 - joinYear) * 12) + (targetMonth + 1);
+  }
+  
+  const expectedTotal = expectedMonths * MONTHLY_TARGET;
+  const actualTotal = contributions.reduce((sum, c) => 
+    (c.member_id === member.id && c.year <= targetYear) ? sum + c.amount : sum
   , 0);
   
-  return Math.max(0, expectedPastTotal - actualPastTotal);
+  return Math.max(0, expectedTotal - actualTotal);
 };
 
 const loanBalance = (loan) => {
