@@ -79,6 +79,7 @@ const fmtKES = (n) => `KES ${Number(n).toLocaleString("en-KE", { minimumFraction
 // contributions is now a flat array from Supabase: [{member_id, month, year, amount}]
 // Build a nested lookup: contribMap[memberId][month] = amount
 const buildContribMap = (contributions) => {
+  if (!contributions || !Array.isArray(contributions)) return contributions || {};
   const map = {};
   contributions.forEach(c => {
     if (!map[c.member_id]) map[c.member_id] = {};
@@ -510,18 +511,39 @@ function ContributionsView({ members, contributions, setContributions, currentUs
     e.target.value = "";
   };
 
-  const applyXlPreview = () => {
-    setContributions(prev => {
-      const next = { ...prev };
+  const applyXlPreview = async () => {
+    try {
+      const updatesToPush = [];
+      const currentYear = new Date().getFullYear();
+      
       xlPreview.forEach(({ member, updates }) => {
-        next[member.id] = { ...(next[member.id] || {}), ...updates };
+        Object.entries(updates).forEach(([mo, amt]) => {
+          updatesToPush.push({ 
+            member_id: member.id, 
+            month: mo, 
+            year: currentYear, 
+            amount: Number(amt) 
+          });
+        });
       });
-      return next;
-    });
-    setXlPreview(null);
-    setModal(null);
-    setXlStatus(`✅ Imported contributions for ${xlPreview.length} member(s).`);
-    setTimeout(() => setXlStatus(""), 5000);
+
+      if (updatesToPush.length > 0) {
+        const { bulkUpsertContributions, fetchContributions } = await import("./supabase");
+        await bulkUpsertContributions(updatesToPush);
+        
+        // Re-fetch to ensure local state is perfectly in sync with DB
+        const freshData = await fetchContributions(currentYear);
+        setContributions(freshData);
+      }
+
+      setXlPreview(null);
+      setModal(null);
+      setXlStatus(`✅ Successfully pushed ${updatesToPush.length} contributions to Supabase.`);
+      setTimeout(() => setXlStatus(""), 5000);
+    } catch (err) {
+      console.error("Bulk upload failed:", err);
+      setXlStatus("❌ Failed to push to Supabase. Check console.");
+    }
   };
 
   const MemberCard = ({ member }) => {
@@ -548,7 +570,8 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {MONTHS.map(mo => {
-            const val = contributions[member.id]?.[mo] || 0;
+            const map = buildContribMap(contributions);
+            const val = map[member.id]?.[mo] || 0;
             return (
               <div key={mo} style={{
                 flex: 1, minWidth: 48, textAlign: "center", padding: "6px 4px", borderRadius: 8,
@@ -1438,58 +1461,64 @@ export default function ChamaApp({ session }) {
     };
   }, [session]);
 
-  // ── Load all data from Supabase on mount ───────────────────────────────────
-  useEffect(() => {
-    async function loadData() {
+  // ── Load all data from Supabase ───────────────────────────────────────────
+  const loadData = async (showLoading = true) => {
+    try {
+      if (showLoading) setAppLoading(true);
+      
+      // 1. Get/Refresh profile
+      let profile;
       try {
-        setAppLoading(true);
-
-        // 1. Get the logged-in member's profile
-        let profile;
-        try {
-          profile = await fetchProfile(session.user.id);
-        } catch (profileErr) {
-          setNeedsProfile(true);
-          setAppLoading(false);
-          return;
-        }
-
-        // ── STRICT AUTHORIZATION GUARD ─────────────────────────────────────
-        // Only "approved" members can proceed to load system data.
-        if (profile && profile.status === "approved") {
-          setCurrentUser(profile);
-        } else if (profile && profile.status === "rejected") {
-          setIsRejected(true);
-          setAppLoading(false);
-          return;
-        } else {
-          // Default: includes 'pending', null, undefined, or any other value
-          setIsWaitingApproval(true);
-          setAppLoading(false);
-          return;
-        }
-        // ───────────────────────────────────────────────────────────────────
-
-        // 2. Load all members
-        const membersData = await fetchMembers();
-        setMembers(membersData);
-
-        // 3. Load contributions for current year
-        const contribData = await fetchContributions(new Date().getFullYear());
-        setContributions(contribData);
-
-        // 4. Load loans
-        const loansData = await fetchLoans();
-        setLoans(loansData.filter(l => l.status !== "pending"));
-        setLoanRequests(loansData.filter(l => l.status === "pending"));
-
-      } catch (e) {
-        setAppError(e.message || "Failed to load data. Please refresh.");
-      } finally {
-        if (!needsProfile) setAppLoading(false);
+        profile = await fetchProfile(session.user.id);
+      } catch (err) {
+        setNeedsProfile(true);
+        return;
       }
+
+      if (profile && profile.status === "approved") {
+        setCurrentUser(profile);
+      } else if (profile && profile.status === "rejected") {
+        setIsRejected(true);
+        return;
+      } else {
+        setIsWaitingApproval(true);
+        return;
+      }
+
+      // 2. Load members
+      const membersData = await fetchMembers();
+      setMembers(membersData);
+
+      // 3. Load contributions for current year
+      const contribData = await fetchContributions(new Date().getFullYear());
+      setContributions(contribData);
+
+      // 4. Load loans
+      const loansData = await fetchLoans();
+      setLoans(loansData.filter(l => l.status !== "pending"));
+      setLoanRequests(loansData.filter(l => l.status === "pending"));
+
+    } catch (e) {
+      setAppError(e.message || "Failed to load data. Please refresh.");
+    } finally {
+      if (showLoading && !needsProfile) setAppLoading(false);
     }
+  };
+
+  // ── Initial Load & Realtime Subscription ───────────────────────────────────
+  useEffect(() => {
     loadData();
+    
+    // Set up realtime listeners for members, contributions, and loans
+    const channel = supabase.channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => loadData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contributions' }, () => loadData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => loadData(false))
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [session, needsProfile]);
 
   // ── Loading screen ─────────────────────────────────────────────────────────

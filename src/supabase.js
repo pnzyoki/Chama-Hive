@@ -210,6 +210,16 @@ export async function distributeContribution(memberId, totalAmount, selMonth, se
   }
 }
 
+export async function bulkUpsertContributions(updates) {
+  // updates: [{ member_id, month, year, amount }, ...]
+  const { data, error } = await supabase
+    .from("contributions")
+    .upsert(updates, { onConflict: "member_id,month,year" });
+    
+  if (error) throw error;
+  return data;
+}
+
 export async function signOut() {
   await supabase.auth.signOut();
   window.location.reload();
