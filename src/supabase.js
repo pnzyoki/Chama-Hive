@@ -27,11 +27,12 @@ export async function fetchMembers() {
   return data;
 }
 
-export async function fetchContributions(year) {
-  const { data, error } = await supabase
-    .from("contributions")
-    .select("*")
-    .eq("year", year);
+export async function fetchContributions(year = null) {
+  let query = supabase.from("contributions").select("*");
+  if (year) {
+    query = query.eq("year", year);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }

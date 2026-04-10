@@ -110,21 +110,61 @@ const INTEREST_RATE  = 0.10;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtKES = (n) => `KES ${Number(n).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
 
-// contributions is now a flat array from Supabase: [{member_id, month, year, amount}]
-// Build a nested lookup: contribMap[memberId][month] = amount
-const buildContribMap = (contributions) => {
-  if (!contributions || !Array.isArray(contributions)) return contributions || {};
+// Build a nested lookup scoped to a specific year: map[memberId][month] = amount
+const buildContribMap = (contributions, year) => {
+  if (!contributions || !Array.isArray(contributions)) return {};
   const map = {};
   contributions.forEach(c => {
-    if (!map[c.member_id]) map[c.member_id] = {};
-    map[c.member_id][c.month] = c.amount;
+    if (c.year === year) {
+      if (!map[c.member_id]) map[c.member_id] = {};
+      map[c.member_id][c.month] = c.amount;
+    }
   });
   return map;
 };
 
+// All-time total across all years
 const totalContrib = (contributions, memberId) => {
-  const map = buildContribMap(contributions);
-  return Object.values(map[memberId] || {}).reduce((a, b) => a + b, 0);
+  if (!contributions || !Array.isArray(contributions)) return 0;
+  return contributions.reduce((sum, c) => (c.member_id === memberId ? sum + c.amount : sum), 0);
+};
+
+// Total for a specific year
+const totalContribYear = (contributions, memberId, year) => {
+  if (!contributions || !Array.isArray(contributions)) return 0;
+  return contributions.reduce((sum, c) => (c.member_id === memberId && c.year === year ? sum + c.amount : sum), 0);
+};
+
+// Aggregate totals dynamically per month
+const getMonthlyTotals = (contributions, activeYear, limit = 12) => {
+  return MONTHS.slice(0, limit).map(mo => {
+    let sum = 0;
+    if (contributions && Array.isArray(contributions)) {
+      contributions.forEach(c => { if (c.month === mo && c.year === activeYear) sum += c.amount; });
+    }
+    return { month: mo, amount: sum };
+  });
+};
+
+const calculateDebt = (member, contributions, activeYear) => {
+  if (!member.join_date) return 0;
+  const joinDate = new Date(member.join_date);
+  const joinYear = joinDate.getFullYear();
+  const joinMonth = joinDate.getMonth(); // 0 = Jan, 11 = Dec
+  
+  if (joinYear >= activeYear) return 0; // No past debt if joined this year or later
+  
+  const yearsActive = (activeYear - 1) - joinYear; 
+  if (yearsActive < 0) return 0;
+
+  const monthsInJoinYear = 12 - joinMonth;
+  const expectedPastTotal = (monthsInJoinYear + (yearsActive * 12)) * MONTHLY_TARGET;
+  
+  const actualPastTotal = contributions.reduce((sum, c) => 
+    (c.member_id === member.id && c.year < activeYear) ? sum + c.amount : sum
+  , 0);
+  
+  return Math.max(0, expectedPastTotal - actualPastTotal);
 };
 
 const loanBalance = (loan) => {
@@ -216,6 +256,14 @@ const Select = ({ label, t, children, ...props }) => (
   </div>
 );
 
+const YearSelector = ({ activeYear, setActiveYear, style, optionStyle }) => (
+  <select value={activeYear} onChange={e => setActiveYear(Number(e.target.value))} style={{
+    fontSize: 13, fontWeight: 700, outline: "none", fontFamily: "inherit", cursor: "pointer", ...style
+  }}>
+    {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y} style={optionStyle}>{y}</option>)}
+  </select>
+);
+
 const Btn = ({ children, variant = "primary", small, t, ...props }) => {
   const styles = {
     primary: { background: "#2d7d46", color: "#fff" },
@@ -269,12 +317,12 @@ const DarkModeToggle = ({ darkMode, setDarkMode, t }) => (
 );
 
 // ─── Views ────────────────────────────────────────────────────────────────────
-function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) {
+function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile }) {
   const approvedMembers = members.filter(m => m.status === "approved");
   const totalFunds  = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
   const totalLoaned = loans.filter(l => l.status === "active").reduce((s, l) => s + l.amount, 0);
   const totalOwed   = loans.filter(l => l.status === "active").reduce((s, l) => s + loanBalance(l), 0);
-  const myContrib   = totalContrib(contributions, currentUser.id);
+  const myContrib   = totalContribYear(contributions, currentUser.id, activeYear);
   const myLoans     = loans.filter(l => l.member_id === currentUser.id && l.status === "active");
   const privileged  = isPrivileged(currentUser.role);
 
@@ -284,11 +332,7 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
     { name: "Loaned Out", value: totalLoaned, color: "#c8a84b" }
   ];
 
-  const monthlyTotals = MONTHS.slice(0, 8).map(mo => {
-     let sum = 0;
-     contributions.forEach(c => { if(c.month === mo) sum += c.amount; });
-     return { month: mo, amount: sum };
-  });
+  const monthlyTotals = getMonthlyTotals(contributions, activeYear, 8);
 
   return (
     <div>
@@ -306,7 +350,7 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
           {/* Summary — visible to ALL members */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
             <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${members.length} active members`} accent="#2d7d46" />
-            <StatCard t={t} label="My Contributions"   value={fmtKES(myContrib)}   sub={`Target: ${fmtKES(MONTHLY_TARGET * 8)}`} accent="#1a5c8a" />
+            <StatCard t={t} label={`My ${activeYear} Contributions`} value={fmtKES(myContrib)} sub={`Target: ${fmtKES(MONTHLY_TARGET * 12)}`} accent="#1a5c8a" />
             {privileged && <>
               <StatCard t={t} label="Active Loans"            value={fmtKES(totalLoaned)} sub={`${loans.filter(l=>l.status==="active").length} loans out`} accent="#c8a84b" />
               <StatCard t={t} label="Total Owed (+ Interest)" value={fmtKES(totalOwed)}   sub="Principal + accrued interest" accent="#e07b39" />
@@ -334,13 +378,14 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
 
           {/* Contribution overview table — all members see status icons; only privileged see KES totals per member */}
           <div style={{ background: t.surface, borderRadius: 16, padding: 24, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
-            <h3 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 800, color: t.text }}>2024 Contribution Overview</h3>
+            <h3 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 800, color: t.text }}>{activeYear} Contribution Overview</h3>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr>
                     <th style={{ textAlign: "left", padding: "8px 12px", color: t.textSub, fontWeight: 700, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" }}>Member</th>
                     {MONTHS.slice(0,8).map(m => <th key={m} style={{ padding: "8px 8px", color: t.textSub, fontWeight: 700, fontSize: 11 }}>{m}</th>)}
+                    <th style={{ padding: "8px 8px", color: "#e05a5a", fontWeight: 700, fontSize: 11 }}>Arrears</th>
                     {privileged && <th style={{ padding: "8px 12px", color: t.textSub, fontWeight: 700, fontSize: 11 }}>Total</th>}
                   </tr>
                 </thead>
@@ -357,7 +402,7 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
                         </div>
                       </td>
                       {MONTHS.slice(0,8).map(mo => {
-                        const map     = buildContribMap(contributions);
+                        const map     = buildContribMap(contributions, activeYear);
                         const val     = map[member.id]?.[mo] || 0;
                         const full    = val >= MONTHLY_TARGET;
                         const partial = val > 0 && val < MONTHLY_TARGET;
@@ -375,10 +420,29 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
                           </td>
                         );
                       })}
+                      {/* Arrears column — always visible */}
+                      {(() => {
+                        const debt = calculateDebt(member, contributions, activeYear);
+                        return (
+                          <td style={{ padding: "10px 8px", textAlign: "center" }}>
+                            {debt > 0 ? (
+                              <span style={{
+                                background: "rgba(224,90,90,0.12)", color: "#e05a5a",
+                                borderRadius: 8, padding: "4px 8px", fontWeight: 800, fontSize: 11,
+                                border: "1px solid rgba(224,90,90,0.3)", whiteSpace: "nowrap"
+                              }}>
+                                -{fmtKES(debt)}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#2d7d46", fontWeight: 700, fontSize: 13 }}>✓</span>
+                            )}
+                          </td>
+                        );
+                      })()}
                       {/* KES totals per member — privileged only */}
                       {privileged && (
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: t.text }}>
-                          {fmtKES(totalContrib(contributions, member.id))}
+                          {fmtKES(totalContribYear(contributions, member.id, activeYear))}
                         </td>
                       )}
                     </tr>
@@ -386,12 +450,15 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
                 </tbody>
               </table>
             </div>
-            <div style={{ marginTop: 12, display: "flex", gap: 16, fontSize: 12, color: t.textSub }}>
+            <div style={{ marginTop: 12, display: "flex", gap: 16, fontSize: 12, color: t.textSub, flexWrap: "wrap" }}>
               {[["Full", t.successBg],["Partial", t.warningBg],["Missed", t.dangerBg]].map(([label, bg]) => (
                 <span key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: bg, display: "inline-block" }} /> {label}
                 </span>
               ))}
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: "rgba(224,90,90,0.2)", display: "inline-block", border: "1px solid rgba(224,90,90,0.5)" }} /> Arrears = unpaid balance from previous years
+              </span>
             </div>
           </div>
         </div>
@@ -452,9 +519,9 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
   );
 }
 
-function ContributionsView({ members, contributions, setContributions, currentUser, t }) {
+function ContributionsView({ members, contributions, setContributions, currentUser, activeYear, t }) {
   const [modal,       setModal]      = useState(null);
-  const [form,        setForm]       = useState({ memberId: "", month: "", amount: "", year: new Date().getFullYear(), shouldDistribute: true });
+  const [form,        setForm]       = useState({ memberId: "", month: "", amount: "", year: activeYear, shouldDistribute: true });
   const [xlStatus,    setXlStatus]   = useState(""); // feedback for excel upload
   const [xlPreview,   setXlPreview]  = useState(null); // parsed rows before confirm
   const [error,       setError]      = useState("");
@@ -482,12 +549,13 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         MONTHS
       );
       
-      // Re-fetch current year data to ensure UI is in sync
-      const contribData = await fetchContributions(new Date().getFullYear());
+      // Re-fetch ALL years to ensure past-year contributions remain in state
+      const contribData = await fetchContributions(null);
       setContributions(contribData);
 
       setModal(null);
-      setForm({ memberId: "", month: "", amount: "", year: new Date().getFullYear(), shouldDistribute: true });
+      setForm({ memberId: "", month: "", amount: "", year: activeYear, shouldDistribute: true });
+      showToast("Contribution saved successfully.");
     } catch (err) {
       setError(err.message || "Failed to save contribution. Check console.");
       console.error("Save failure:", err);
@@ -557,7 +625,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const applyXlPreview = async () => {
     try {
       const updatesToPush = [];
-      const currentYear = new Date().getFullYear();
+      const currentYear = activeYear;
       
       xlPreview.forEach(({ member, updates }) => {
         Object.entries(updates).forEach(([mo, amt]) => {
@@ -574,8 +642,8 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         const { bulkUpsertContributions, fetchContributions } = await import("./supabase");
         await bulkUpsertContributions(updatesToPush);
         
-        // Re-fetch to ensure local state is perfectly in sync with DB
-        const freshData = await fetchContributions(currentYear);
+        // Re-fetch ALL years to ensure local state is perfectly in sync with DB
+        const freshData = await fetchContributions(null);
         setContributions(freshData);
       }
 
@@ -593,9 +661,11 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   };
 
   const MemberCard = ({ member }) => {
-    const total  = totalContrib(contributions, member.id);
+    const totalYear = totalContribYear(contributions, member.id, activeYear);
     const target = MONTHLY_TARGET * 12;
-    const pct    = Math.min(100, (total / target) * 100);
+    const debt = calculateDebt(member, contributions, activeYear);
+    const pct = Math.min(100, (totalYear / target) * 100);
+
     return (
       <div style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 14, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -607,8 +677,9 @@ function ContributionsView({ members, contributions, setContributions, currentUs
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "#2d7d46" }}>{fmtKES(total)}</div>
-            <div style={{ fontSize: 12, color: t.textMuted }}>of {fmtKES(target)}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "#2d7d46" }}>{fmtKES(totalYear)}</div>
+            <div style={{ fontSize: 12, color: t.textMuted }}>of {fmtKES(target)} (Yr {activeYear})</div>
+            {debt > 0 && <div style={{ fontSize: 11, color: "#e05a5a", fontWeight: 700, marginTop: 4 }}>Arrears: {fmtKES(debt)}</div>}
           </div>
         </div>
         <div style={{ background: t.surface3, borderRadius: 8, height: 8, overflow: "hidden" }}>
@@ -616,7 +687,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {MONTHS.map(mo => {
-            const map = buildContribMap(contributions);
+            const map = buildContribMap(contributions, activeYear);
             const val = map[member.id]?.[mo] || 0;
             return (
               <div key={mo} style={{
@@ -1490,6 +1561,7 @@ export default function ChamaApp({ session }) {
   const [needsProfile,  setNeedsProfile]  = useState(false);
   const [isWaitingApproval, setIsWaitingApproval] = useState(false);
   const [isRejected,        setIsRejected]        = useState(false);
+  const [activeYear,    setActiveYear]    = useState(2026);
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
@@ -1545,8 +1617,8 @@ export default function ChamaApp({ session }) {
       const membersData = await fetchMembers();
       setMembers(membersData);
 
-      // 3. Load contributions for current year
-      const contribData = await fetchContributions(new Date().getFullYear());
+      // 3. Load contributions for all years
+      const contribData = await fetchContributions(null);
       setContributions(contribData);
 
       // 4. Load loans
@@ -1575,7 +1647,7 @@ export default function ChamaApp({ session }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, needsProfile]);
+  }, [session, needsProfile, activeYear]);
 
   // ── Loading screen ─────────────────────────────────────────────────────────
   if (appLoading) return (
@@ -1714,6 +1786,9 @@ export default function ChamaApp({ session }) {
             <span style={{ color: "#fff", fontWeight: 800, fontSize: 15 }}>ChamaHive</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <YearSelector activeYear={activeYear} setActiveYear={setActiveYear} style={{
+              background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 8, padding: "4px 8px"
+            }} optionStyle={{color: "#000"}} />
             <button onClick={() => setDarkMode(d => !d)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>
               {darkMode ? "☀️" : "🌙"}
             </button>
@@ -1734,6 +1809,10 @@ export default function ChamaApp({ session }) {
         {/* Desktop top bar */}
         {!isMobile && (
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginBottom: 28 }}>
+            <YearSelector activeYear={activeYear} setActiveYear={setActiveYear} style={{
+              background: t.headerCardBg, color: t.text, border: `1px solid ${t.border}`, borderRadius: 14,
+              padding: "10px 16px", boxShadow: t.cardShadow
+            }} />
             <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} t={t} />
             <div style={{ display: "flex", alignItems: "center", gap: 12, background: t.headerCardBg, padding: "10px 16px", borderRadius: 14, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
               <Avatar initials={currentUser.avatar} size={34} color={currentUser.role} />
@@ -1745,8 +1824,8 @@ export default function ChamaApp({ session }) {
           </div>
         )}
 
-        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
-        {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} t={t} />}
+        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} />}
+        {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "mpesa"         && <MpesaView         t={t} />}
