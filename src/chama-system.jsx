@@ -417,7 +417,7 @@ function Dashboard({ members, contributions, loans, currentUser, t, isMobile }) 
 
 function ContributionsView({ members, contributions, setContributions, currentUser, t }) {
   const [modal,       setModal]      = useState(null);
-  const [form,        setForm]       = useState({ memberId: "", month: "", amount: "" });
+  const [form,        setForm]       = useState({ memberId: "", month: "", amount: "", year: new Date().getFullYear(), shouldDistribute: true });
   const [xlStatus,    setXlStatus]   = useState(""); // feedback for excel upload
   const [xlPreview,   setXlPreview]  = useState(null); // parsed rows before confirm
   const [error,       setError]      = useState("");
@@ -429,20 +429,28 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 
   const handleSave = async () => {
     if (!form.memberId || !form.month || !form.amount) return;
-    const year = new Date().getFullYear();
     setError("");
     try {
-      const { upsertContribution } = await import("./supabase");
-      await upsertContribution(form.memberId, form.month, year, Number(form.amount), currentUser.id);
-      // Update local state so UI reflects immediately
-      setContributions(prev => {
-        const updated = prev.filter(c => !(c.member_id === form.memberId && c.month === form.month && c.year === year));
-        return [...updated, { member_id: form.memberId, month: form.month, year, amount: Number(form.amount) }];
-      });
+      const { distributeContribution, fetchContributions } = await import("./supabase");
+      await distributeContribution(
+        form.memberId, 
+        Number(form.amount), 
+        form.month, 
+        Number(form.year), 
+        currentUser.id, 
+        form.shouldDistribute, 
+        MONTHLY_TARGET, 
+        MONTHS
+      );
+      
+      // Re-fetch current year data to ensure UI is in sync
+      const contribData = await fetchContributions(new Date().getFullYear());
+      setContributions(contribData);
+
       setModal(null);
-      setForm({ memberId: "", month: "", amount: "" });
+      setForm({ memberId: "", month: "", amount: "", year: new Date().getFullYear(), shouldDistribute: true });
     } catch (err) {
-      setError(err.message || "Failed to save contribution. Check console for details.");
+      setError(err.message || "Failed to save contribution. Check console.");
       console.error("Save failure:", err);
     }
   };
@@ -497,7 +505,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 
   const MemberCard = ({ member }) => {
     const total  = totalContrib(contributions, member.id);
-    const target = MONTHLY_TARGET * 8;
+    const target = MONTHLY_TARGET * 12;
     const pct    = Math.min(100, (total / target) * 100);
     return (
       <div style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 14, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
@@ -518,7 +526,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
           <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "#2d7d46" : pct >= 60 ? "#c8a84b" : "#e07b39", borderRadius: 8 }} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          {MONTHS.slice(0,8).map(mo => {
+          {MONTHS.map(mo => {
             const val = contributions[member.id]?.[mo] || 0;
             return (
               <div key={mo} style={{
@@ -593,10 +601,19 @@ function ContributionsView({ members, contributions, setContributions, currentUs
           </Select>
           <Select label="Month" t={t} value={form.month} onChange={e => setForm({ ...form, month: e.target.value })}>
             <option value="">Select month...</option>
-            {MONTHS.slice(0,8).map(m => <option key={m} value={m}>{m}</option>)}
+            {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
           </Select>
-          <Input t={t} label="Amount (KES)" type="number" placeholder="2000" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+          <Select label="Year" t={t} value={form.year} onChange={e => setForm({ ...form, year: e.target.value })}>
+            {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+          </Select>
+          <Input t={t} label="Amount (KES)" type="number" placeholder="200" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+          
+          <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, cursor: "pointer", fontSize: 13, color: t.textSub }}>
+            <input type="checkbox" checked={form.shouldDistribute} onChange={e => setForm({ ...form, shouldDistribute: e.target.checked })} />
+            Auto-distribute excess to missed/next months
+          </label>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
             <Btn t={t} variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn t={t} onClick={handleSave}>Save Contribution</Btn>
           </div>

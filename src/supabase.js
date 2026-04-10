@@ -125,7 +125,6 @@ export async function addRepayment(loanId, amount, userId) {
 }
 
 export async function upsertContribution(memberId, month, year, amount, userId) {
-  // Try to find if it exists
   const { data: existing, error: fetchErr } = await supabase
     .from("contributions")
     .select("id")
@@ -137,16 +136,77 @@ export async function upsertContribution(memberId, month, year, amount, userId) 
   if (fetchErr) throw fetchErr;
     
   if (existing) {
-    const { error } = await supabase
-      .from("contributions")
-      .update({ amount })
-      .eq("id", existing.id);
+    const { error } = await supabase.from("contributions").update({ amount }).eq("id", existing.id);
     if (error) throw error;
   } else {
-    const { error } = await supabase
-      .from("contributions")
-      .insert([{ member_id: memberId, month, year, amount }]);
+    const { error } = await supabase.from("contributions").insert([{ member_id: memberId, month, year, amount }]);
     if (error) throw error;
+  }
+}
+
+export async function distributeContribution(memberId, totalAmount, selMonth, selYear, userId, shouldDistribute, monthlyTarget, months) {
+  if (!shouldDistribute) {
+    return await upsertContribution(memberId, selMonth, selYear, totalAmount, userId);
+  }
+
+  // 1. Fetch history for current and previous year
+  const prevYear = selYear - 1;
+  const { data: history, error: hErr } = await supabase
+    .from("contributions")
+    .select("*")
+    .eq("member_id", memberId)
+    .in("year", [prevYear, selYear]);
+
+  if (hErr) throw hErr;
+
+  const getAmount = (m, y) => history.find(c => c.month === m && c.year === y)?.amount || 0;
+  let remaining = totalAmount;
+
+  // 2. Priority: Fill the selected month first
+  const currentSel = getAmount(selMonth, selYear);
+  const selGap = Math.max(0, monthlyTarget - currentSel);
+  const fillSel = Math.min(remaining, selGap);
+  await upsertContribution(memberId, selMonth, selYear, currentSel + fillSel, userId);
+  remaining -= fillSel;
+
+  if (remaining <= 0) return;
+
+  // 3. Look Back: Fill arrears (Previous Year all months -> Current Year up to selected month)
+  const selIdx = months.indexOf(selMonth);
+  const backSchedule = [];
+  months.forEach(m => backSchedule.push({ month: m, year: prevYear }));
+  months.slice(0, selIdx).forEach(m => backSchedule.push({ month: m, year: selYear }));
+
+  for (const item of backSchedule) {
+    if (remaining <= 0) break;
+    const cur = getAmount(item.month, item.year);
+    if (cur < monthlyTarget) {
+      const gap = monthlyTarget - cur;
+      const fill = Math.min(remaining, gap);
+      await upsertContribution(memberId, item.month, item.year, cur + fill, userId);
+      remaining -= fill;
+    }
+  }
+
+  // 4. Look Forward: Fill future months of the current year (after selected month)
+  if (remaining > 0) {
+    const forwardSchedule = months.slice(selIdx + 1).map(m => ({ month: m, year: selYear }));
+    for (const item of forwardSchedule) {
+      if (remaining <= 0) break;
+      const cur = getAmount(item.month, item.year);
+      if (cur < monthlyTarget) {
+        const gap = monthlyTarget - cur;
+        const fill = Math.min(remaining, gap);
+        await upsertContribution(memberId, item.month, item.year, cur + fill, userId);
+        remaining -= fill;
+      }
+    }
+  }
+
+  // 5. Final Remainder: If money STILL remains, add it back to the selected month as surplus
+  if (remaining > 0) {
+    const { data: final } = await supabase.from("contributions").select("amount").eq("member_id", memberId).eq("month", selMonth).eq("year", selYear).single();
+    await upsertContribution(memberId, selMonth, selYear, (final?.amount || 0) + remaining, userId);
   }
 }
 
