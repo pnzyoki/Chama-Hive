@@ -921,7 +921,7 @@ function MemberForm({ form, setForm, errors, t, onSave, onCancel, saveLabel, set
   );
 }
 
-function MembersView({ members, setMembers, contributions, loans, currentUser, t }) {
+function MembersView({ members, setMembers, contributions, loans, currentUser, t, isMobile }) {
   const isAdmin = currentUser.role === "admin";
   const privileged = isPrivileged(currentUser.role);
   // Regular members only see their own card; Admins see all APPROVED members here (Pending in own section)
@@ -1690,7 +1690,7 @@ export default function ChamaApp({ session }) {
         {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} t={t} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
-        {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} />}
+        {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "mpesa"         && <MpesaView         t={t} />}
       </div>
 
