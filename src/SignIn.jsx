@@ -61,6 +61,8 @@ export default function SignIn({ onSignedIn }) {
         if (signUpErr) throw signUpErr;
 
         if (data?.user && data?.session) {
+          const { updatePasswordTimestamp } = await import("./supabase");
+          await updatePasswordTimestamp(data.user.id);
           if (onSignedIn) onSignedIn();
         } else {
           setMessage("Registration successful! Please check your email to confirm your account.");

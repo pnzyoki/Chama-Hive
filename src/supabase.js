@@ -2,8 +2,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 // Initialize Supabase. Note: The user MUST provide these in the .env file!
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://your-project.supabase.co";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhb...";
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -228,3 +228,16 @@ export async function signOut() {
   await supabase.auth.signOut();
   window.location.reload();
 }
+
+export async function updatePasswordTimestamp(authId) {
+  try {
+    const { error } = await supabase
+      .from("members")
+      .update({ password_changed_at: new Date().toISOString() })
+      .eq("auth_id", authId);
+    if (error) console.warn("Could not update password timestamp. Ensure SQL migration has been run.", error);
+  } catch (err) {
+    console.warn("Silent failure updating password timestamp:", err);
+  }
+}
+
