@@ -271,11 +271,15 @@ const Select = ({ label, t, children, ...props }) => (
   </div>
 );
 
+const START_YEAR = 2025;
+const currentYear = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: Math.max(currentYear - START_YEAR + 2, 2) }, (_, i) => START_YEAR + i);
+
 const YearSelector = ({ activeYear, setActiveYear, style, optionStyle }) => (
   <select value={activeYear} onChange={e => setActiveYear(Number(e.target.value))} style={{
     fontSize: 13, fontWeight: 700, outline: "none", fontFamily: "inherit", cursor: "pointer", ...style
   }}>
-    {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y} style={optionStyle}>{y}</option>)}
+    {YEAR_OPTIONS.map(y => <option key={y} value={y} style={optionStyle}>{y}</option>)}
   </select>
 );
 
@@ -584,14 +588,14 @@ function ContributionsView({ members, contributions, setContributions, currentUs
     try {
       const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
       const data = members.map(m => {
-        const row = { Name: m.name };
+        const row = { Name: m.name, Year: activeYear };
         MONTHS.forEach(mo => row[mo] = "");
         return row;
       });
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Contributions");
-      XLSX.writeFile(wb, "ChamaHive_Contributions_Template.xlsx");
+      XLSX.writeFile(wb, `ChamaHive_Contributions_${activeYear}_Template.xlsx`);
     } catch (err) {
       console.error("Template download failed:", err);
       setXlStatus("❌ Failed to generate template.");
@@ -614,12 +618,15 @@ function ContributionsView({ members, contributions, setContributions, currentUs
       const wb   = XLSX.read(data, { type: "array" });
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      // Expected columns: Name (or ID), Jan, Feb, … Dec
+      // Expected columns: Name, Year (optional – defaults to activeYear), Jan, Feb, … Dec
       const preview = [];
       rows.forEach(row => {
         const memberName = (row["Name"] || row["name"] || "").toString().trim();
         const member = members.find(m => m.name.toLowerCase() === memberName.toLowerCase() || String(m.id) === memberName);
         if (!member) return;
+        // Read year from the row; fall back to the currently active year
+        const rowYear = parseInt(row["Year"] || row["year"] || activeYear, 10);
+        const year = (!isNaN(rowYear) && rowYear >= START_YEAR) ? rowYear : activeYear;
         const updates = {};
         MONTHS.forEach(mo => {
           let val = parseFloat(row[mo] || row[mo.toLowerCase()] || 0);
@@ -628,9 +635,9 @@ function ContributionsView({ members, contributions, setContributions, currentUs
             updates[mo] = val;
           }
         });
-        if (Object.keys(updates).length) preview.push({ member, updates });
+        if (Object.keys(updates).length) preview.push({ member, updates, year });
       });
-      if (!preview.length) { setXlStatus("⚠ No matching members or contribution data found. Check column headers match member names and month abbreviations (Jan, Feb…)."); return; }
+      if (!preview.length) { setXlStatus("⚠ No matching members or contribution data found. Check column headers match member names and month abbreviations (Jan, Feb…) and Year >= 2025."); return; }
       setXlPreview(preview);
       setXlStatus("");
       setModal("xlpreview");
@@ -643,14 +650,14 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const applyXlPreview = async () => {
     try {
       const updatesToPush = [];
-      const currentYear = activeYear;
       
-      xlPreview.forEach(({ member, updates }) => {
+      // Each preview row now carries its own year (read from the Excel file)
+      xlPreview.forEach(({ member, updates, year }) => {
         Object.entries(updates).forEach(([mo, amt]) => {
           updatesToPush.push({ 
             member_id: member.id, 
             month: mo, 
-            year: currentYear, 
+            year: year ?? activeYear,  // use row-level year with activeYear as fallback
             amount: Number(amt) 
           });
         });
@@ -765,7 +772,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 12, padding: "11px 16px", marginBottom: 20, fontSize: 12, color: t.textSub, display: "flex", alignItems: "flex-start", gap: 10 }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
           <span>
-            <strong style={{ color: t.text }}>Excel format:</strong> Column A = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Name</code> (must match enrolled member name exactly), then one column per month using 3-letter abbreviations: <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec</code>. Amounts in KES. Leave blank for no contribution that month.
+            <strong style={{ color: t.text }}>Excel format:</strong> Column A = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Name</code> (must match enrolled member name exactly), Column B = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Year</code> (e.g. 2025 or 2026 — required, minimum 2025), then one column per month: <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec</code>. Amounts in KES. Leave blank for no contribution that month.
           </span>
         </div>
       )}
@@ -792,7 +799,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
             {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
           </Select>
           <Select label="Year" t={t} value={form.year} onChange={e => setForm({ ...form, year: e.target.value })}>
-            {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
           </Select>
           <Input t={t} label="Amount (KES)" type="number" placeholder="200" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
           
@@ -815,11 +822,12 @@ function ContributionsView({ members, contributions, setContributions, currentUs
             The following contributions will be <strong style={{ color: t.text }}>merged</strong> into existing records. Existing values for the same member + month will be <strong style={{ color: "#e07b39" }}>overwritten</strong>.
           </div>
           <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 16 }}>
-            {xlPreview.map(({ member, updates }) => (
+            {xlPreview.map(({ member, updates, year }) => (
               <div key={member.id} style={{ padding: "10px 0", borderBottom: `1px solid ${t.border}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                   <Avatar initials={member.avatar} size={28} color={member.role} />
                   <strong style={{ color: t.text, fontSize: 14 }}>{member.name}</strong>
+                  <span style={{ fontSize: 11, color: t.textSub, fontWeight: 700 }}>({year})</span>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {Object.entries(updates).map(([mo, amt]) => (
@@ -1356,8 +1364,9 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
                       <span style={{ fontWeight: 600, color: t.text, fontSize: 12 }}>{member.next_of_kin}</span>
                     </div>
                   )}
-                  {member.enrolled_by && (
-                    <div style={{ fontSize: 11, color: t.textMuted, textAlign: "right", marginTop: 3 }}>Enrolled by {member.enrolled_by}</div>
+                  {/* enrolled_by is an internal UUID — do not expose it to non-privileged users */}
+                  {privileged && member.enrolled_by && (
+                    <div style={{ fontSize: 11, color: t.textMuted, textAlign: "right", marginTop: 3 }}>Enrolled by {members.find(m => m.id === member.enrolled_by)?.name || "Admin"}</div>
                   )}
                 </div>
               )}
@@ -1671,12 +1680,22 @@ export default function ChamaApp({ session }) {
   const [needsProfile,  setNeedsProfile]  = useState(false);
   const [isWaitingApproval, setIsWaitingApproval] = useState(false);
   const [isRejected,        setIsRejected]        = useState(false);
-  const [activeYear,    setActiveYear]    = useState(2026);
+  const [activeYear,    setActiveYear]    = useState(Math.max(new Date().getFullYear(), START_YEAR));
 
   const t        = THEMES[darkMode ? "dark" : "light"];
   const isMobile = useIsMobile();
 
-  // ── 1-Minute Inactivity Auto-Logout ───────────────────────────────────────
+  // ── Supabase Keepalive Ping (prevents free-tier project from pausing) ────────
+  useEffect(() => {
+    // Ping the DB every 4 minutes with a lightweight no-op query
+    const KEEPALIVE_INTERVAL_MS = 4 * 60 * 1000;
+    const ping = () => supabase.from("members").select("id", { count: "exact", head: true }).then(() => {});
+    ping(); // run immediately on mount
+    const keepaliveTimer = setInterval(ping, KEEPALIVE_INTERVAL_MS);
+    return () => clearInterval(keepaliveTimer);
+  }, []);
+
+  // ── 10-Minute Inactivity Auto-Logout ─────────────────────────────────────────
   useEffect(() => {
     let timeoutId;
     
@@ -1684,7 +1703,7 @@ export default function ChamaApp({ session }) {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         signOut();
-      }, 60000); // 1 minute
+      }, 10 * 60 * 1000); // 10 minutes
     };
 
     const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];

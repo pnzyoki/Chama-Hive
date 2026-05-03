@@ -148,18 +148,27 @@ export async function upsertContribution(memberId, month, year, amount, userId) 
   }
 }
 
+const CHAMA_START_YEAR = 2025; // Records should not predate this year
+
 export async function distributeContribution(memberId, totalAmount, selMonth, selYear, userId, shouldDistribute, monthlyTarget, months) {
+  // Reject contributions for years before the chama start year
+  if (selYear < CHAMA_START_YEAR) {
+    throw new Error(`Contributions cannot be recorded before ${CHAMA_START_YEAR}.`);
+  }
+
   if (!shouldDistribute) {
     return await upsertContribution(memberId, selMonth, selYear, totalAmount, userId);
   }
 
-  // 1. Fetch history for current and previous year
+  // 1. Fetch history for current and previous year (but never before CHAMA_START_YEAR)
   const prevYear = selYear - 1;
+  const yearsToFetch = prevYear >= CHAMA_START_YEAR ? [prevYear, selYear] : [selYear];
+
   const { data: history, error: hErr } = await supabase
     .from("contributions")
     .select("*")
     .eq("member_id", memberId)
-    .in("year", [prevYear, selYear]);
+    .in("year", yearsToFetch);
 
   if (hErr) throw hErr;
 
@@ -170,15 +179,21 @@ export async function distributeContribution(memberId, totalAmount, selMonth, se
   const currentSel = getAmount(selMonth, selYear);
   const selGap = Math.max(0, monthlyTarget - currentSel);
   const fillSel = Math.min(remaining, selGap);
-  await upsertContribution(memberId, selMonth, selYear, currentSel + fillSel, userId);
-  remaining -= fillSel;
+  if (fillSel > 0) {
+    await upsertContribution(memberId, selMonth, selYear, currentSel + fillSel, userId);
+    remaining -= fillSel;
+  }
 
   if (remaining <= 0) return;
 
-  // 3. Look Back: Fill arrears (Previous Year all months -> Current Year up to selected month)
+  // 3. Look Back: Fill arrears (Previous Year [>= CHAMA_START_YEAR] -> Current Year up to selected month)
   const selIdx = months.indexOf(selMonth);
   const backSchedule = [];
-  months.forEach(m => backSchedule.push({ month: m, year: prevYear }));
+
+  // Only include previous year in backfill if it's within valid range
+  if (prevYear >= CHAMA_START_YEAR) {
+    months.forEach(m => backSchedule.push({ month: m, year: prevYear }));
+  }
   months.slice(0, selIdx).forEach(m => backSchedule.push({ month: m, year: selYear }));
 
   for (const item of backSchedule) {
@@ -208,9 +223,17 @@ export async function distributeContribution(memberId, totalAmount, selMonth, se
   }
 
   // 5. Final Remainder: If money STILL remains, add it back to the selected month as surplus
+  //    Re-read the latest value from DB to avoid overwriting concurrent changes.
   if (remaining > 0) {
-    const { data: final } = await supabase.from("contributions").select("amount").eq("member_id", memberId).eq("month", selMonth).eq("year", selYear).single();
-    await upsertContribution(memberId, selMonth, selYear, (final?.amount || 0) + remaining, userId);
+    const { data: final } = await supabase
+      .from("contributions")
+      .select("amount")
+      .eq("member_id", memberId)
+      .eq("month", selMonth)
+      .eq("year", selYear)
+      .single();
+    const latestAmount = final?.amount ?? 0;
+    await upsertContribution(memberId, selMonth, selYear, latestAmount + remaining, userId);
   }
 }
 
