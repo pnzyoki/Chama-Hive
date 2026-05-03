@@ -1163,9 +1163,19 @@ function MemberForm({ form, setForm, errors, t, onSave, onCancel, saveLabel, set
   );
 }
 
-function MembersView({ members, setMembers, contributions, loans, currentUser, t, isMobile }) {
-  const isAdmin = currentUser.role === "admin";
+function MembersView({ members, setMembers, contributions, loans, currentUser, t, isMobile, activeYear, totalFundsOverride }) {
+  const isAdmin    = currentUser.role === "admin";
   const privileged = isPrivileged(currentUser.role);
+  const approvedMembers = members.filter(m => m.status === "approved");
+
+  // My all-time contributions
+  const myTotalContrib = totalContrib(contributions, currentUser.id);
+  // My current-year contributions
+  const myYearContrib  = totalContribYear(contributions, currentUser.id, activeYear);
+  // True kitty total (server-side aggregate when available, else local estimate)
+  const localKitty     = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
+  const kittyTotal     = (totalFundsOverride !== null && totalFundsOverride !== undefined)
+    ? totalFundsOverride : localKitty;
   // Regular members only see their own card; Admins see all APPROVED members here (Pending in own section)
   const visibleMembers = privileged 
     ? members.filter(m => m.status === "approved") 
@@ -1306,6 +1316,44 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
           ℹ️ You can view your own membership details below. Contact the Admin for any changes.
         </div>
       )}
+
+      {/* ── Summary stat strip — visible to ALL users ── */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
+        {/* Total Chama Funds — the whole kitty */}
+        <div style={{
+          flex: "1 1 160px", background: t.surface, borderRadius: 14,
+          padding: "16px 20px", borderLeft: "4px solid #2d7d46",
+          boxShadow: t.cardShadow, border: `1px solid ${t.border}`,
+        }}>
+          <div style={{ fontSize: 11, color: t.textSub, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>Total Chama Funds</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: t.text }}>{fmtKES(kittyTotal)}</div>
+          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>{approvedMembers.length} active members</div>
+        </div>
+
+        {/* My All-time Contributions — visible to ALL including admin */}
+        <div style={{
+          flex: "1 1 160px", background: t.surface, borderRadius: 14,
+          padding: "16px 20px", borderLeft: "4px solid #1a5c8a",
+          boxShadow: t.cardShadow, border: `1px solid ${t.border}`,
+        }}>
+          <div style={{ fontSize: 11, color: t.textSub, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>My All-time Contributions</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: t.text }}>{fmtKES(myTotalContrib)}</div>
+          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>{activeYear}: {fmtKES(myYearContrib)}</div>
+        </div>
+
+        {/* Total Members — privileged only */}
+        {privileged && (
+          <div style={{
+            flex: "1 1 160px", background: t.surface, borderRadius: 14,
+            padding: "16px 20px", borderLeft: "4px solid #c8a84b",
+            boxShadow: t.cardShadow, border: `1px solid ${t.border}`,
+          }}>
+            <div style={{ fontSize: 11, color: t.textSub, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>Approved Members</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: t.text }}>{approvedMembers.length}</div>
+            <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>of {members.length} total enrolled</div>
+          </div>
+        )}
+      </div>
 
       {/* Member cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 16 }}>
@@ -2024,7 +2072,7 @@ export default function ChamaApp({ session }) {
         {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} totalFundsOverride={totalFunds} />}
         {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
-        {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
+        {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} activeYear={activeYear} totalFundsOverride={totalFunds} />}
         {view === "mpesa"         && <MpesaView         t={t} currentUser={currentUser} />}
       </div>
 
