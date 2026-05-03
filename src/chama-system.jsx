@@ -553,9 +553,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   const [xlPreview,   setXlPreview]  = useState(null); // parsed rows before confirm
   const [error,       setError]      = useState("");
   const privileged   = isPrivileged(currentUser.role);
-  const isTreasurer  = currentUser.role === "treasurer";
-  const canEdit      = privileged;
-  // Regular members only see their own record; Admins see all APPROVED members
+  // Regular members only see their own record; privileged see all APPROVED members
   const visibleMembers = privileged 
     ? members.filter(m => m.status === "approved") 
     : members.filter(m => m.id === currentUser.id && m.status === "approved");
@@ -692,9 +690,11 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 
   const MemberCard = ({ member }) => {
     const totalYear = totalContribYear(contributions, member.id, activeYear);
-    const target = MONTHLY_TARGET * 12;
-    const debt = calculateDebt(member, contributions, activeYear);
-    const pct = Math.min(100, (totalYear / target) * 100);
+    const target    = MONTHLY_TARGET * 12;
+    const debt      = calculateDebt(member, contributions, activeYear);
+    const pct       = Math.min(100, (totalYear / target) * 100);
+    // Hoist map outside MONTHS.map so it's computed once per card render
+    const contribMap = buildContribMap(contributions, activeYear);
 
     return (
       <div style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 14, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
@@ -717,8 +717,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {MONTHS.map(mo => {
-            const map = buildContribMap(contributions, activeYear);
-            const val = map[member.id]?.[mo] || 0;
+            const val = contribMap[member.id]?.[mo] || 0;
             return (
               <div key={mo} style={{
                 flex: 1, minWidth: 48, textAlign: "center", padding: "6px 4px", borderRadius: 8,
@@ -745,10 +744,10 @@ function ContributionsView({ members, contributions, setContributions, currentUs
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: t.text }}>Contributions</h2>
           <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Monthly target: {fmtKES(MONTHLY_TARGET)} per member</p>
         </div>
-        {canEdit && (
+        {privileged && (
           <div style={{ display: "flex", gap: 10 }}>
-            {/* Treasurer Excel upload */}
-            {(isTreasurer || currentUser.role === "admin" || currentUser.role === "chairman") && (
+            {/* Excel upload — available to all privileged roles */}
+            {privileged && (
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={handleDownloadTemplate} style={{
                   display: "flex", alignItems: "center", gap: 7, background: t.surface3,
@@ -773,7 +772,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
       </div>
 
       {/* Excel template hint */}
-      {canEdit && (
+      {privileged && (
         <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 12, padding: "11px 16px", marginBottom: 20, fontSize: 12, color: t.textSub, display: "flex", alignItems: "flex-start", gap: 10 }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
           <span>
