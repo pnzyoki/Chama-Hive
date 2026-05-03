@@ -1149,7 +1149,6 @@ function MemberForm({ form, setForm, errors, t, onSave, onCancel, saveLabel, set
           <MemberField t={t} label="Full Name *" placeholder="e.g. Jane Muthoni Kamau" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.name} />
         </div>
         <MemberField t={t} label="Phone *" placeholder="0712345678" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={errors.phone} />
-        <MemberField t={t} label="National ID / Passport *" placeholder="e.g. 12345678" value={form.idNumber} onChange={e => setForm({ ...form, idNumber: e.target.value })} error={errors.idNumber} />
         <MemberField t={t} label="Email (optional)" type="email" placeholder="jane@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
         <MemberField t={t} label="Join Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={errors.joinDate} />
         <MemberField t={t} label="Next of Kin" placeholder="Full name" value={form.nextOfKin} onChange={e => setForm({ ...form, nextOfKin: e.target.value })} />
@@ -1181,7 +1180,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
     ? members.filter(m => m.status === "approved") 
     : members.filter(m => m.id === currentUser.id && m.status === "approved");
 
-  const EMPTY_FORM = { name: "", phone: "", email: "", idNumber: "", joinDate: new Date().toISOString().split("T")[0], nextOfKin: "", nextOfKinPhone: "" };
+  const EMPTY_FORM = { name: "", phone: "", email: "", joinDate: new Date().toISOString().split("T")[0], nextOfKin: "", nextOfKinPhone: "" };
   const [modal,        setModal]        = useState(null); // "enroll"|"edit"|"remove"|"role"|null
   const [form,         setForm]         = useState(EMPTY_FORM);
   const [editTarget,   setEditTarget]   = useState(null);
@@ -1198,7 +1197,6 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
     if (!form.name.trim())    e.name     = "Full name is required";
     if (!form.phone.trim())   e.phone    = "Phone number is required";
     if (!/^0[0-9]{9}$/.test(form.phone.trim())) e.phone = "Enter a valid Kenyan number (e.g. 0712345678)";
-    if (!form.idNumber.trim()) e.idNumber = "ID / Passport number is required";
     if (!form.joinDate)        e.joinDate = "Join date is required";
     return e;
   };
@@ -1208,7 +1206,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
     if (Object.keys(e).length) { setErrors(e); return; }
     const nm = {
       name: form.name.trim(), phone: form.phone.trim(),
-      email: form.email.trim() || null, id_number: form.idNumber.trim(),
+      email: form.email.trim() || null,
       role: "member",
       join_date: form.joinDate,
       next_of_kin: form.nextOfKin.trim() || null, nok_phone: form.nextOfKinPhone.trim() || null,
@@ -1233,7 +1231,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
     if (Object.keys(e).length) { setErrors(e); return; }
     const updates = {
       name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim() || null,
-      id_number: form.idNumber.trim(), join_date: form.joinDate,
+      join_date: form.joinDate,
       next_of_kin: form.nextOfKin.trim() || null, nok_phone: form.nextOfKinPhone.trim() || null,
       avatar: mkInitials(form.name),
     };
@@ -1276,7 +1274,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
 
   const openEdit = (member) => {
     setEditTarget(member);
-    setForm({ name: member.name, phone: member.phone, email: member.email || "", idNumber: member.id_number || "", joinDate: member.join_date, nextOfKin: member.next_of_kin || "", nextOfKinPhone: member.nok_phone || "" });
+    setForm({ name: member.name, phone: member.phone, email: member.email || "", joinDate: member.join_date, nextOfKin: member.next_of_kin || "", nextOfKinPhone: member.nok_phone || "" });
     setErrors({}); setModal("edit");
   };
 
@@ -1646,13 +1644,13 @@ function MpesaView({ t, currentUser }) {
 
 // ─── Complete Profile View ──────────────────────────────────────────────────
 function CompleteProfile({ session, onComplete, onSignOut, t }) {
-  const [form, setForm] = useState({ name: "", phone: "", idNumber: "" });
+  const [form, setForm] = useState({ name: "", phone: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleComplete = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.phone || !form.idNumber) {
+    if (!form.name || !form.phone) {
       setError("Please fill all fields");
       return;
     }
@@ -1664,7 +1662,6 @@ function CompleteProfile({ session, onComplete, onSignOut, t }) {
         auth_id: session.user.id,
         name: form.name.trim(),
         phone: form.phone.trim(),
-        id_number: form.idNumber.trim(),
         email: session.user.email,
         role: "member",
         status: "pending", // New members must be approved
@@ -1689,7 +1686,6 @@ function CompleteProfile({ session, onComplete, onSignOut, t }) {
         <form onSubmit={handleComplete}>
           <Input t={t} label="Full Name" placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
           <Input t={t} label="Phone Number" placeholder="07XXXXXXX" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} required />
-          <Input t={t} label="National ID" placeholder="12345678" value={form.idNumber} onChange={e => setForm({ ...form, idNumber: e.target.value })} required />
           
           <Btn t={t} style={{ width: "100%", marginTop: 12 }} disabled={loading}>
             {loading ? "Saving..." : "Complete Profile"}
