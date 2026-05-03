@@ -551,7 +551,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   );
 }
 
-function ContributionsView({ members, contributions, setContributions, currentUser, activeYear, t }) {
+function ContributionsView({ members, contributions, setContributions, currentUser, activeYear, t, isMobile }) {
   const [modal,       setModal]      = useState(null);
   const [form,        setForm]       = useState({ memberId: "", month: "", amount: "", year: activeYear, shouldDistribute: true });
   const [xlStatus,    setXlStatus]   = useState(""); // feedback for excel upload
@@ -858,7 +858,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
   );
 }
 
-function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, currentUser, t }) {
+function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, currentUser, t, isMobile }) {
   const [modal,        setModal]        = useState(null);
   const [form,         setForm]         = useState({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
   const [repayForm,       setRepayForm]       = useState({ loanId: "", amount: "", repaid_at: new Date().toISOString().split("T")[0] });
@@ -2083,8 +2083,8 @@ export default function ChamaApp({ session }) {
         )}
 
         {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} totalFundsOverride={totalFunds} />}
-        {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} />}
-        {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
+        {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} />}
+        {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} activeYear={activeYear} totalFundsOverride={totalFunds} />}
         {view === "mpesa"         && <MpesaView         t={t} currentUser={currentUser} />}
       </div>
