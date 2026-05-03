@@ -37,6 +37,27 @@ export async function fetchContributions(year = null) {
   return data;
 }
 
+/**
+ * Returns the TRUE total of all contributions across all members & years.
+ * Uses a SECURITY DEFINER Postgres function so RLS does not restrict the result.
+ *
+ * One-time setup — run this SQL once in your Supabase SQL Editor:
+ *
+ *   CREATE OR REPLACE FUNCTION get_total_funds()
+ *   RETURNS numeric LANGUAGE sql SECURITY DEFINER AS $$
+ *     SELECT COALESCE(SUM(amount), 0) FROM contributions;
+ *   $$;
+ *   GRANT EXECUTE ON FUNCTION get_total_funds() TO authenticated;
+ */
+export async function fetchTotalFunds() {
+  const { data, error } = await supabase.rpc('get_total_funds');
+  if (error) {
+    console.warn('fetchTotalFunds RPC not found — run the SQL setup. Falling back to 0.', error.message);
+    return null; // null = caller will fall back to local calculation
+  }
+  return Number(data ?? 0);
+}
+
 export async function fetchLoans() {
   const { data, error } = await supabase
     .from("loans")

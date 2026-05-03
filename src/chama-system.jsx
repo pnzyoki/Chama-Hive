@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, signOut } from "./supabase";
+import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, fetchTotalFunds, signOut } from "./supabase";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 export const toastEmitter = new EventTarget();
@@ -336,9 +336,14 @@ const DarkModeToggle = ({ darkMode, setDarkMode, t }) => (
 );
 
 // ─── Views ────────────────────────────────────────────────────────────────────
-function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile }) {
+function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile, totalFundsOverride }) {
   const approvedMembers = members.filter(m => m.status === "approved");
-  const totalFunds  = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
+  // Use the server-side aggregate when available (bypasses RLS so admin = member view)
+  // Fall back to local calculation only when RPC hasn't been set up yet
+  const localFunds = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
+  const totalFunds = totalFundsOverride !== null && totalFundsOverride !== undefined
+    ? totalFundsOverride
+    : localFunds;
   const totalLoaned = loans.filter(l => l.status === "active").reduce((s, l) => s + l.amount, 0);
   const totalOwed   = loans.filter(l => l.status === "active").reduce((s, l) => s + loanBalance(l), 0);
   const myContrib   = totalContribYear(contributions, currentUser.id, activeYear);
@@ -371,7 +376,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Summary — visible to ALL members */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
-            <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${members.length} active members`} accent="#2d7d46" />
+            <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${approvedMembers.length} active members`} accent="#2d7d46" />
             <StatCard t={t} label={`My ${activeYear} Contributions`} value={fmtKES(myContrib)} sub={`Target: ${fmtKES(MONTHLY_TARGET * 12)}`} accent="#1a5c8a" />
             {privileged && <>
               <StatCard t={t} label="Active Loans"            value={fmtKES(totalLoaned)} sub={`${loans.filter(l=>l.status==="active").length} loans out`} accent="#c8a84b" />
@@ -1674,6 +1679,7 @@ export default function ChamaApp({ session }) {
   const [contributions, setContributions] = useState([]);
   const [loans,         setLoans]         = useState([]);
   const [loanRequests,  setLoanRequests]  = useState([]);
+  const [totalFunds,    setTotalFunds]    = useState(null); // server-side aggregate — same for all roles
   const [drawerOpen,    setDrawerOpen]    = useState(false);
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
@@ -1754,6 +1760,11 @@ export default function ChamaApp({ session }) {
       const loansData = await fetchLoans();
       setLoans(loansData.filter(l => l.status !== "pending"));
       setLoanRequests(loansData.filter(l => l.status === "pending"));
+
+      // 5. Fetch true total funds via server-side aggregate (bypasses RLS)
+      //    All users see the same chama total regardless of their role.
+      const trueTotalFunds = await fetchTotalFunds();
+      setTotalFunds(trueTotalFunds);
 
     } catch (e) {
       setAppError(e.message || "Failed to load data. Please refresh.");
@@ -1953,7 +1964,7 @@ export default function ChamaApp({ session }) {
           </div>
         )}
 
-        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} />}
+        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} totalFundsOverride={totalFunds} />}
         {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
