@@ -1224,6 +1224,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
     const nm = {
       name: form.name.trim(), phone: form.phone.trim(),
       email: form.email.trim() || null,
+      id_number: "",  // field removed from UI; kept to satisfy DB NOT NULL constraint
       role: "member",
       join_date: form.joinDate,
       next_of_kin: form.nextOfKin.trim() || null, nok_phone: form.nextOfKinPhone.trim() || null,
@@ -1679,9 +1680,10 @@ function CompleteProfile({ session, onComplete, onSignOut, t }) {
         auth_id: session.user.id,
         name: form.name.trim(),
         phone: form.phone.trim(),
+        id_number: "",  // field removed from UI; kept to satisfy DB NOT NULL constraint
         email: session.user.email,
         role: "member",
-        status: "pending", // New members must be approved
+        status: "pending",
         join_date: new Date().toISOString().split("T")[0],
       });
       onComplete(); 
