@@ -1488,7 +1488,64 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
 
 
 
-function MpesaView({ t }) {
+function MpesaView({ t, currentUser }) {
+  const isAdmin = currentUser?.role === "admin";
+
+  if (!isAdmin) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div style={{
+          background: t.surface, borderRadius: 24, padding: "52px 40px", maxWidth: 440, width: "100%",
+          textAlign: "center", boxShadow: t.cardShadow, border: `1px solid ${t.border}`,
+        }}>
+          {/* Animated icon */}
+          <div style={{
+            width: 80, height: 80, borderRadius: 24, background: "linear-gradient(135deg,#00b83f22,#00b83f44)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 24px", border: "2px solid #00b83f44",
+          }}>
+            <span style={{ fontSize: 38 }}>📱</span>
+          </div>
+
+          <h2 style={{ margin: "0 0 10px", fontSize: 24, fontWeight: 800, color: t.text }}>Coming Soon</h2>
+          <p style={{ color: t.textSub, fontSize: 14, margin: "0 0 28px", lineHeight: 1.7 }}>
+            M-Pesa integration is on the way! Soon you'll be able to make contributions and
+            receive receipts directly through your phone — no manual entry needed.
+          </p>
+
+          {/* Feature preview pills */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28, textAlign: "left" }}>
+            {[
+              { icon: "⚡", label: "Instant STK Push",    desc: "Pay with one tap from your phone" },
+              { icon: "📋", label: "Auto-recorded",        desc: "Contributions logged automatically" },
+              { icon: "🔔", label: "SMS Confirmation",     desc: "Receipt sent to your number" },
+            ].map(f => (
+              <div key={f.label} style={{
+                display: "flex", gap: 14, padding: "12px 16px",
+                background: t.surface2, borderRadius: 12, border: `1px solid ${t.border}`,
+              }}>
+                <span style={{ fontSize: 20 }}>{f.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: t.text }}>{f.label}</div>
+                  <div style={{ fontSize: 12, color: t.textSub }}>{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            background: "linear-gradient(135deg,#00b83f18,#2d7d4618)",
+            border: "1px solid #00b83f33", borderRadius: 12, padding: "10px 16px",
+            fontSize: 12, color: t.textSub,
+          }}>
+            🔒 Contact your <strong style={{ color: t.text }}>chama admin</strong> for more information.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Admin-only: Full Daraja configuration ──
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -1968,7 +2025,7 @@ export default function ChamaApp({ session }) {
         {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} />}
-        {view === "mpesa"         && <MpesaView         t={t} />}
+        {view === "mpesa"         && <MpesaView         t={t} currentUser={currentUser} />}
       </div>
 
       {/* ── MOBILE BOTTOM NAV ── */}
