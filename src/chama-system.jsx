@@ -110,6 +110,15 @@ const INTEREST_RATE  = 0.10;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtKES = (n) => `KES ${Number(n).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
 
+const parseDateLocal = (d) => {
+  if (!d) return new Date();
+  if (d instanceof Date) return d;
+  const str = typeof d === 'string' ? d.split('T')[0] : String(d);
+  const parts = str.split('-');
+  if (parts.length !== 3) return new Date(str);
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+};
+
 // Build a nested lookup scoped to a specific year: map[memberId][month] = amount
 const buildContribMap = (contributions, year) => {
   if (!contributions || !Array.isArray(contributions)) return {};
@@ -148,7 +157,7 @@ const getMonthlyTotals = (contributions, activeYear, limit = 12) => {
 
 const calculateDebt = (member, contributions, activeYear) => {
   if (!member.join_date) return 0;
-  const joinDate = new Date(member.join_date);
+  const joinDate = parseDateLocal(member.join_date);
   const joinYear = joinDate.getFullYear();
   const joinMonth = joinDate.getMonth(); // 0 = Jan, 11 = Dec
   
@@ -189,8 +198,12 @@ const calculateDebt = (member, contributions, activeYear) => {
  *   interest is calculated up to this date instead of today (prevents overcharging).
  */
 const loanBalance = (loan, repaidAt) => {
-  const toDate  = repaidAt ? new Date(repaidAt) : new Date();
-  const months  = Math.ceil((toDate - new Date(loan.date)) / (1000 * 60 * 60 * 24 * 30));
+  const toDate  = repaidAt ? parseDateLocal(repaidAt) : new Date();
+  toDate.setHours(0, 0, 0, 0);
+  const fromDate = parseDateLocal(loan.approval_date || loan.date);
+  fromDate.setHours(0, 0, 0, 0);
+  const diffMs  = toDate - fromDate;
+  const months  = Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 30));
   const interest = loan.amount * (loan.interest_rate ?? INTEREST_RATE) * Math.max(months, 1);
   return Math.max(0, loan.amount + interest - loan.paid);
 };
@@ -362,9 +375,13 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const monthlyTotals = useMemo(() => getMonthlyTotals(contributions, activeYear, 8), [contributions, activeYear]);
 
   // Data for charts
+  const totalPaid = useMemo(() => loans.reduce((s, l) => s + (l.paid || 0), 0), [loans]);
+  const totalLoanPrincipal = useMemo(() => loans.reduce((s, l) => s + (l.amount || 0), 0), [loans]);
+  const availableCash = Math.max(0, totalFunds + totalPaid - totalLoanPrincipal);
+
   const fundsData = [
-    { name: "Available", value: Math.max(0, totalFunds - totalLoaned), color: "#2d7d46" },
-    { name: "Loaned Out", value: totalLoaned, color: "#c8a84b" }
+    { name: "Available Cash", value: availableCash, color: "#2d7d46" },
+    { name: "Outstanding Loans", value: totalOwed, color: "#c8a84b" }
   ];
 
   return (
@@ -1012,8 +1029,12 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
         <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8 }}>Active Loans</h3>
         {visibleLoans.filter(l => l.status === "active").map(loan => {
           const balance  = loanBalance(loan);
-          const months   = Math.ceil((new Date() - new Date(loan.date)) / (1000 * 60 * 60 * 24 * 30));
-          const interest = loan.amount * loan.interest_rate * Math.max(months, 1);
+          const toDate = new Date();
+          toDate.setHours(0, 0, 0, 0);
+          const fromDate = parseDateLocal(loan.approval_date || loan.date);
+          fromDate.setHours(0, 0, 0, 0);
+          const months   = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24 * 30));
+          const interest = loan.amount * (loan.interest_rate ?? INTEREST_RATE) * Math.max(months, 1);
           const pct      = Math.min(100, (loan.paid / (loan.amount + interest)) * 100);
           return (
             <div key={loan.id} style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 12, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, borderLeft: "4px solid #e07b39" }}>
