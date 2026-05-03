@@ -182,8 +182,15 @@ const calculateDebt = (member, contributions, activeYear) => {
   return Math.max(0, expectedTotal - actualTotal);
 };
 
-const loanBalance = (loan) => {
-  const months   = Math.ceil((new Date() - new Date(loan.date)) / (1000 * 60 * 60 * 24 * 30));
+/**
+ * Calculates the outstanding balance on a loan.
+ * @param {object} loan - the loan record
+ * @param {string|Date} [repaidAt] - optional actual repayment date; if provided,
+ *   interest is calculated up to this date instead of today (prevents overcharging).
+ */
+const loanBalance = (loan, repaidAt) => {
+  const toDate  = repaidAt ? new Date(repaidAt) : new Date();
+  const months  = Math.ceil((toDate - new Date(loan.date)) / (1000 * 60 * 60 * 24 * 30));
   const interest = loan.amount * (loan.interest_rate ?? INTEREST_RATE) * Math.max(months, 1);
   return Math.max(0, loan.amount + interest - loan.paid);
 };
@@ -854,7 +861,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
 function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, currentUser, t }) {
   const [modal,        setModal]        = useState(null);
   const [form,         setForm]         = useState({ amount: "", purpose: "", application_date: new Date().toISOString().split("T")[0] });
-  const [repayForm,    setRepayForm]    = useState({ loanId: "", amount: "" });
+  const [repayForm,       setRepayForm]       = useState({ loanId: "", amount: "", repaid_at: new Date().toISOString().split("T")[0] });
   const [approveTarget, setApproveTarget] = useState(null); // loan request being approved
   const [approveForm,   setApproveForm]   = useState({ approval_date: new Date().toISOString().split("T")[0], due_date: "" });
   const [editDatesTarget, setEditDatesTarget] = useState(null);
@@ -944,17 +951,23 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
     let amt = Number(repayForm.amount);
     if (!repayForm.loanId || !amt || amt <= 0) return;
     amt = Math.min(amt, 100000000);
+    // Use the admin-specified repayment date (or today) as the interest cutoff
+    const repaidAt = repayForm.repaid_at || new Date().toISOString().split("T")[0];
     try {
       const { addRepayment, updateLoan } = await import("./supabase");
       await addRepayment(repayForm.loanId, amt, currentUser.id);
       const loan = loans.find(l => l.id === repayForm.loanId);
       if (loan) {
-        const newPaid = loan.paid + amt;
-        const newStatus = loanBalance({ ...loan, paid: newPaid }) <= 0 ? "completed" : "active";
-        await updateLoan(repayForm.loanId, { paid: newPaid, status: newStatus });
-        setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, paid: newPaid, status: newStatus } : l));
+        const newPaid   = loan.paid + amt;
+        // Calculate balance using the actual repayment date to avoid overcharging
+        const newStatus = loanBalance({ ...loan, paid: newPaid }, repaidAt) <= 0 ? "completed" : "active";
+        const updates   = { paid: newPaid, status: newStatus };
+        if (newStatus === "completed") updates.repaid_at = repaidAt;
+        await updateLoan(repayForm.loanId, updates);
+        setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, ...updates } : l));
       }
-      setModal(null); setRepayForm({ loanId: "", amount: "" });
+      setModal(null);
+      setRepayForm({ loanId: "", amount: "", repaid_at: new Date().toISOString().split("T")[0] });
       showToast("Repayment recorded successfully.");
     } catch (err) {
       showToast("Repayment failed: " + err.message, "error");
@@ -1043,7 +1056,10 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
             <div key={loan.id} style={{ background: t.completedLoanBg, borderRadius: 14, padding: 16, marginBottom: 10, borderLeft: "4px solid #2d7d46", display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${t.border}` }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: t.completedLoanText }}>{memberName(loan.member_id)} — {loan.purpose}</div>
-                <div style={{ fontSize: 12, color: t.textMuted }}>Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''} · {fmtKES(loan.amount)} original</div>
+                <div style={{ fontSize: 12, color: t.textMuted }}>
+                  Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''}
+                  {loan.repaid_at ? ` · Repaid: ${loan.repaid_at}` : ''} · {fmtKES(loan.amount)} original
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                 {canManage && (
@@ -1090,7 +1106,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       )}
 
       {modal === "repay" && (
-        <Modal title="Record Loan Repayment" onClose={() => setModal(null)} t={t}>
+        <Modal title="Record Loan Repayment" onClose={() => setModal(null)} t={t} isMobile={isMobile}>
           <Select label="Loan" t={t} value={repayForm.loanId} onChange={e => setRepayForm({ ...repayForm, loanId: e.target.value })}>
             <option value="">Select active loan...</option>
             {loans.filter(l => l.status === "active").map(l => (
@@ -1098,6 +1114,10 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
             ))}
           </Select>
           <Input t={t} label="Repayment Amount (KES)" type="number" placeholder="5000" value={repayForm.amount} onChange={e => setRepayForm({ ...repayForm, amount: e.target.value })} />
+          <Input t={t} label="Date Repaid" type="date" value={repayForm.repaid_at} onChange={e => setRepayForm({ ...repayForm, repaid_at: e.target.value })} />
+          <div style={{ background: "#1a3a2a", border: "1px solid #2d7d4633", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#7dd4a0", marginBottom: 12 }}>
+            💡 Interest is calculated up to the <strong>Date Repaid</strong>. Set the actual payment date to avoid overcharging.
+          </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn t={t} variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn t={t} onClick={handleRepay}>Record Payment</Btn>
