@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, fetchTotalFunds, signOut } from "./supabase";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
@@ -224,8 +224,7 @@ const StatCard = ({ label, value, sub, accent, t }) => (
   </div>
 );
 
-const Modal = ({ title, onClose, children, t }) => {
-  const isMobile = window.innerWidth < 768;
+const Modal = ({ title, onClose, children, t, isMobile }) => {
   return (
   <div className="animate-fade-in" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center" }}>
     <div className="animate-slide-up" style={{
@@ -337,29 +336,29 @@ const DarkModeToggle = ({ darkMode, setDarkMode, t }) => (
 
 // ─── Views ────────────────────────────────────────────────────────────────────
 function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile, totalFundsOverride }) {
-  const approvedMembers = members.filter(m => m.status === "approved");
-  // Use the server-side aggregate when available (bypasses RLS so admin = member view)
-  // Fall back to local calculation only when RPC hasn't been set up yet
-  const localFunds = approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0);
-  const totalFunds = totalFundsOverride !== null && totalFundsOverride !== undefined
-    ? totalFundsOverride
-    : localFunds;
-  const totalLoaned = loans.filter(l => l.status === "active").reduce((s, l) => s + l.amount, 0);
-  const totalOwed   = loans.filter(l => l.status === "active").reduce((s, l) => s + loanBalance(l), 0);
-  const myContrib   = totalContribYear(contributions, currentUser.id, activeYear);
-  const myLoans     = loans.filter(l => l.member_id === currentUser.id && l.status === "active");
+  const approvedMembers  = useMemo(() => members.filter(m => m.status === "approved"), [members]);
+  const visibleMembers   = useMemo(() => isPrivileged(currentUser.role)
+    ? approvedMembers
+    : approvedMembers.filter(m => m.id === currentUser.id),
+    [approvedMembers, currentUser.id, currentUser.role]);
+
+  // Contribution map — computed once per activeYear/contributions change
+  const contribMap = useMemo(() => buildContribMap(contributions, activeYear), [contributions, activeYear]);
+
+  const localFunds  = useMemo(() => approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0), [approvedMembers, contributions]);
+  const totalFunds  = (totalFundsOverride !== null && totalFundsOverride !== undefined) ? totalFundsOverride : localFunds;
+  const totalLoaned = useMemo(() => loans.filter(l => l.status === "active").reduce((s, l) => s + l.amount, 0), [loans]);
+  const totalOwed   = useMemo(() => loans.filter(l => l.status === "active").reduce((s, l) => s + loanBalance(l), 0), [loans]);
+  const myContrib   = useMemo(() => totalContribYear(contributions, currentUser.id, activeYear), [contributions, currentUser.id, activeYear]);
+  const myLoans     = useMemo(() => loans.filter(l => l.member_id === currentUser.id && l.status === "active"), [loans, currentUser.id]);
   const privileged  = isPrivileged(currentUser.role);
-  const visibleMembers = privileged 
-    ? members.filter(m => m.status === "approved") 
-    : members.filter(m => m.id === currentUser.id && m.status === "approved");
+  const monthlyTotals = useMemo(() => getMonthlyTotals(contributions, activeYear, 8), [contributions, activeYear]);
 
   // Data for charts
   const fundsData = [
     { name: "Available", value: Math.max(0, totalFunds - totalLoaned), color: "#2d7d46" },
     { name: "Loaned Out", value: totalLoaned, color: "#c8a84b" }
   ];
-
-  const monthlyTotals = getMonthlyTotals(contributions, activeYear, 8);
 
   return (
     <div>
@@ -429,8 +428,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                         </div>
                       </td>
                       {MONTHS.slice(0,8).map(mo => {
-                        const map     = buildContribMap(contributions, activeYear);
-                        const val     = map[member.id]?.[mo] || 0;
+                        const val     = contribMap[member.id]?.[mo] || 0;
                         const full    = val >= MONTHLY_TARGET;
                         const partial = val > 0 && val < MONTHLY_TARGET;
                         return (
