@@ -193,19 +193,30 @@ const calculateDebt = (member, contributions, activeYear) => {
 };
 
 /**
- * Calculates the outstanding balance on a loan.
- * @param {object} loan - the loan record
- * @param {string|Date} [repaidAt] - optional actual repayment date; if provided,
- *   interest is calculated up to this date instead of today (prevents overcharging).
+ * Calculates the straight-line interest for a loan based on its agreed term.
  */
-const loanBalance = (loan, repaidAt) => {
-  const toDate  = repaidAt ? parseDateLocal(repaidAt) : new Date();
-  toDate.setHours(0, 0, 0, 0);
+const calculateLoanInterest = (loan) => {
   const fromDate = parseDateLocal(loan.approval_date || loan.date);
   fromDate.setHours(0, 0, 0, 0);
-  const diffMs  = toDate - fromDate;
-  const months  = Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 30));
-  const interest = loan.amount * (loan.interest_rate ?? INTEREST_RATE) * Math.max(months, 1);
+  
+  let termMonths = 1;
+  if (loan.due_date) {
+    const dueDate = parseDateLocal(loan.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    // Straight-line basis: interest is fixed based on the agreed term
+    termMonths = Math.round((dueDate - fromDate) / (1000 * 60 * 60 * 24 * 30));
+  }
+  
+  termMonths = Math.max(termMonths, 1);
+  return loan.amount * (loan.interest_rate ?? INTEREST_RATE) * termMonths;
+};
+
+/**
+ * Calculates the outstanding balance on a loan.
+ * @param {object} loan - the loan record
+ */
+const loanBalance = (loan) => {
+  const interest = calculateLoanInterest(loan);
   return Math.max(0, loan.amount + interest - loan.paid);
 };
 
@@ -969,7 +980,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
     let amt = Number(repayForm.amount);
     if (!repayForm.loanId || !amt || amt <= 0) return;
     amt = Math.min(amt, 100000000);
-    // Use the admin-specified repayment date (or today) as the interest cutoff
+    // In straight-line basis, interest is already fixed.
     const repaidAt = repayForm.repaid_at || new Date().toISOString().split("T")[0];
     try {
       const { addRepayment, updateLoan } = await import("./supabase");
@@ -977,8 +988,8 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       const loan = loans.find(l => l.id === repayForm.loanId);
       if (loan) {
         const newPaid   = loan.paid + amt;
-        // Calculate balance using the actual repayment date to avoid overcharging
-        const newStatus = loanBalance({ ...loan, paid: newPaid }, repaidAt) <= 0 ? "completed" : "active";
+        // In a straight-line basis, interest is fixed, so repayment date doesn't affect the total balance
+        const newStatus = loanBalance({ ...loan, paid: newPaid }) <= 0 ? "completed" : "active";
         const updates   = { paid: newPaid, status: newStatus };
         if (newStatus === "completed") updates.repaid_at = repaidAt;
         await updateLoan(repayForm.loanId, updates);
@@ -1030,12 +1041,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
         <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8 }}>Active Loans</h3>
         {visibleLoans.filter(l => l.status === "active").map(loan => {
           const balance  = loanBalance(loan);
-          const toDate = new Date();
-          toDate.setHours(0, 0, 0, 0);
-          const fromDate = parseDateLocal(loan.approval_date || loan.date);
-          fromDate.setHours(0, 0, 0, 0);
-          const months   = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24 * 30));
-          const interest = loan.amount * (loan.interest_rate ?? INTEREST_RATE) * Math.max(months, 1);
+          const interest = calculateLoanInterest(loan);
           const pct      = Math.min(100, (loan.paid / (loan.amount + interest)) * 100);
           return (
             <div key={loan.id} style={{ background: t.surface, borderRadius: 16, padding: 20, marginBottom: 12, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, borderLeft: "4px solid #e07b39" }}>
