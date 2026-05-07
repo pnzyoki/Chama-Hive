@@ -208,7 +208,7 @@ const calculateLoanInterest = (loan) => {
   }
   
   termMonths = Math.max(termMonths, 1);
-  return loan.amount * (loan.interest_rate ?? INTEREST_RATE) * termMonths;
+  return loan.amount * INTEREST_RATE * termMonths;
 };
 
 /**
@@ -427,7 +427,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                 <div key={loan.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${t.warningBorder}` }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{fmtKES(loan.amount)} — {loan.purpose}</div>
-                    <div style={{ fontSize: 12, color: t.textSub }}>Due: {loan.due_date} · {loan.interest_rate * 100}%/mo interest</div>
+                    <div style={{ fontSize: 12, color: t.textSub }}>Due: {loan.due_date} · {INTEREST_RATE * 100}%/mo interest</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontWeight: 800, color: "#e05a5a", fontSize: 16 }}>{fmtKES(loanBalance(loan))}</div>
@@ -1141,11 +1141,14 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
               <option key={l.id} value={l.id}>{memberName(l.member_id)} — {fmtKES(loanBalance(l))} outstanding</option>
             ))}
           </Select>
+          <div style={{ background: t.infoRowBg, padding: 12, borderRadius: 8, marginTop: 16 }}>
+            <p style={{ margin: 0, fontSize: 13, color: t.textSub, lineHeight: 1.5 }}>
+            💡 <strong>Straight-line interest:</strong> The total interest is fixed based on the agreed loan term.
+            </p>
+          </div>
           <Input t={t} label="Repayment Amount (KES)" type="number" placeholder="5000" value={repayForm.amount} onChange={e => setRepayForm({ ...repayForm, amount: e.target.value })} />
           <Input t={t} label="Date Repaid" type="date" value={repayForm.repaid_at} onChange={e => setRepayForm({ ...repayForm, repaid_at: e.target.value })} />
-          <div style={{ background: "#1a3a2a", border: "1px solid #2d7d4633", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#7dd4a0", marginBottom: 12 }}>
-            💡 Interest is calculated up to the <strong>Date Repaid</strong>. Set the actual payment date to avoid overcharging.
-          </div>
+
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn t={t} variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn t={t} onClick={handleRepay}>Record Payment</Btn>
