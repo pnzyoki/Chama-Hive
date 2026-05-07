@@ -210,8 +210,8 @@ const calculateLoanInterest = (loan) => {
   termMonths = Math.max(termMonths, 1);
 
   if (loan.interest_type === "reducing_12") {
-    // Option B: 12% straight line (flat fee, regardless of term)
-    return loan.amount * 0.12;
+    // Option B: 12% straight line (flat per month)
+    return loan.amount * 0.12 * termMonths;
   }
 
   // Option 1: Normal 10% straight line interest (Flat)
