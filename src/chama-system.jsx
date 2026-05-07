@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, fetchTotalFunds, signOut } from "./supabase";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import ResetPassword from "./ResetPassword";
 
 export const toastEmitter = new EventTarget();
 export const showToast = (text, type = "success") => {
@@ -1226,7 +1227,6 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
   const [roleTarget,   setRoleTarget]   = useState(null);
   const [assignedRole, setAssignedRole] = useState("member");
   const [errors,       setErrors]       = useState({});
-  const [success,      setSuccess]      = useState("");
 
   const mkInitials = (name) => name.trim().split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
@@ -1242,10 +1242,12 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
   const handleEnroll = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
+    // Generate a unique id_number fallback using phone + timestamp (field removed from UI but DB requires uniqueness)
+    const uniqueIdFallback = `${form.phone.trim()}-${Date.now()}`;
     const nm = {
       name: form.name.trim(), phone: form.phone.trim(),
       email: form.email.trim() || null,
-      id_number: "",  // field removed from UI; kept to satisfy DB NOT NULL constraint
+      id_number: uniqueIdFallback,
       role: "member",
       join_date: form.joinDate,
       next_of_kin: form.nextOfKin.trim() || null, nok_phone: form.nextOfKinPhone.trim() || null,
@@ -1256,13 +1258,11 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
       const saved = await createMember(nm);
       setMembers(prev => [...prev, saved]);
       showToast(`${saved.name} enrolled as Member. You can now assign their role using the 🏷 button.`);
-      setSuccess(`${saved.name} enrolled as Member. You can now assign their role using the 🏷 button.`);
     } catch (err) {
       setErrors({ name: err.message || "Failed to enroll member." });
       return;
     }
     setErrors({}); setModal(null); setForm(EMPTY_FORM);
-    setTimeout(() => setSuccess(""), 6000);
   };
 
   const handleEdit = async () => {
@@ -1303,9 +1303,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
       await updateMember(roleTarget.id, { role: assignedRole });
       setMembers(prev => prev.map(m => m.id === roleTarget.id ? { ...m, role: assignedRole } : m));
       showToast(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
-      setSuccess(`Role updated to "${assignedRole}" for ${roleTarget.name}.`);
       setModal(null); setRoleTarget(null);
-      setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
       showToast("Role assignment failed: " + err.message, "error");
     }
@@ -1332,12 +1330,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
         {isAdmin && <Btn t={t} onClick={() => { setForm(EMPTY_FORM); setErrors({}); setModal("enroll"); }}>+ Enroll Member</Btn>}
       </div>
 
-      {/* Success toast */}
-      {success && (
-        <div className="animate-fade-in" style={{ background: t.successBg, border: "1.5px solid #2d7d46", borderRadius: 12, padding: "11px 16px", marginBottom: 18, fontSize: 13, color: "#2d7d46", fontWeight: 700 }}>
-          ✅ {success}
-        </div>
-      )}
+      {/* Success feedback handled via GlobalToast */}
 
       {/* Admin capability note */}
       {isAdmin && (
@@ -1681,6 +1674,110 @@ function MpesaView({ t, currentUser }) {
   );
 }
 
+// ─── Profile View ────────────────────────────────────────────────────────────
+function ProfileView({ currentUser, setCurrentUser, t, isMobile, onResetPassword }) {
+  const [editing, setEditing]   = useState(false);
+  const [form,    setForm]      = useState({ name: currentUser.name, phone: currentUser.phone || "" });
+  const [loading, setLoading]   = useState(false);
+  const [error,   setError]     = useState("");
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.phone.trim()) { setError("Name and phone are required."); return; }
+    setLoading(true); setError("");
+    try {
+      const { updateMember } = await import("./supabase");
+      const saved = await updateMember(currentUser.id, {
+        name:   form.name.trim(),
+        phone:  form.phone.trim(),
+        avatar: form.name.trim().split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2),
+      });
+      setCurrentUser(prev => ({ ...prev, ...saved }));
+      setEditing(false);
+      showToast("Profile updated successfully.");
+    } catch (err) {
+      setError(err.message || "Failed to update profile.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fields = [
+    { label: "Full Name",   value: currentUser.name  },
+    { label: "Phone",       value: currentUser.phone  },
+    { label: "Email",       value: currentUser.email  },
+    { label: "Role",        value: currentUser.role,  badge: true },
+    { label: "Member Since",value: currentUser.join_date },
+    { label: "Next of Kin", value: currentUser.next_of_kin || "—" },
+    { label: "NOK Phone",   value: currentUser.nok_phone  || "—" },
+  ];
+
+  return (
+    <div style={{ maxWidth: 580, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: t.text }}>My Profile</h2>
+          <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Your ChamaHive account details</p>
+        </div>
+        {!editing && (
+          <Btn t={t} variant="ghost" small onClick={() => { setEditing(true); setError(""); }}>
+            ✏️ Edit Profile
+          </Btn>
+        )}
+      </div>
+
+      {/* Avatar + name hero */}
+      <div style={{ background: t.surface, borderRadius: 18, padding: 24, marginBottom: 20, boxShadow: t.cardShadow, border: `1px solid ${t.border}`, display: "flex", alignItems: "center", gap: 20 }}>
+        <Avatar initials={currentUser.avatar} size={64} color={currentUser.role} />
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 20, color: t.text }}>{currentUser.name}</div>
+          <div style={{ marginTop: 6 }}><Badge role={currentUser.role} t={t} /></div>
+          <div style={{ fontSize: 12, color: t.textMuted, marginTop: 6 }}>Member since {currentUser.join_date}</div>
+        </div>
+      </div>
+
+      {/* Details card */}
+      <div style={{ background: t.surface, borderRadius: 18, padding: 24, marginBottom: 20, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 16 }}>Account Details</div>
+        {fields.map(f => (
+          <div key={f.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${t.border}` }}>
+            <span style={{ fontSize: 13, color: t.textSub }}>{f.label}</span>
+            {f.badge
+              ? <Badge role={f.value} t={t} />
+              : <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{f.value || "—"}</span>
+            }
+          </div>
+        ))}
+      </div>
+
+      {/* Edit form */}
+      {editing && (
+        <div style={{ background: t.surface, borderRadius: 18, padding: 24, marginBottom: 20, boxShadow: t.cardShadow, border: `1.5px solid #2d7d46` }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 16 }}>Edit Details</div>
+          {error && <div style={{ background: t.dangerBg, color: "#e05a5a", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 16, border: "1px solid rgba(224,90,90,0.3)" }}>⚠️ {error}</div>}
+          <Input t={t} label="Full Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          <Input t={t} label="Phone Number" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn t={t} variant="ghost" onClick={() => { setEditing(false); setError(""); setForm({ name: currentUser.name, phone: currentUser.phone || "" }); }}>Cancel</Btn>
+            <Btn t={t} disabled={loading} onClick={handleSave}>{loading ? "Saving..." : "Save Changes"}</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Security section */}
+      <div style={{ background: t.surface, borderRadius: 18, padding: 24, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: t.textSub, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 16 }}>Security</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>Password</div>
+            <div style={{ fontSize: 12, color: t.textMuted, marginTop: 3 }}>Change your account password</div>
+          </div>
+          <Btn t={t} variant="ghost" small onClick={onResetPassword}>🔑 Change Password</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Complete Profile View ──────────────────────────────────────────────────
 function CompleteProfile({ session, onComplete, onSignOut, t }) {
   const [form, setForm] = useState({ name: "", phone: "" });
@@ -1701,7 +1798,7 @@ function CompleteProfile({ session, onComplete, onSignOut, t }) {
         auth_id: session.user.id,
         name: form.name.trim(),
         phone: form.phone.trim(),
-        id_number: "",  // field removed from UI; kept to satisfy DB NOT NULL constraint
+        id_number: session.user.id,  // Unique fallback for removed UI field to satisfy DB constraints
         email: session.user.email,
         role: "member",
         status: "pending",
@@ -2005,11 +2102,11 @@ export default function ChamaApp({ session }) {
     { id: "loans",         icon: "🏦", label: "Loans"         },
     { id: "members",       icon: "👥", label: "Members"       },
     { id: "mpesa",         icon: "📱", label: "M-Pesa"        },
+    { id: "profile",       icon: "👤", label: "Profile"       },
   ];
 
   const pendingCount = loanRequests.filter(r => r.status === "pending").length;
   const navigate     = (id) => { setView(id); setDrawerOpen(false); };
-  const handleSignOut = async () => { await signOut(); };
 
   return (
     <div style={{ fontFamily: "'DM Sans', 'Segoe UI', sans-serif", background: t.bg, minHeight: "100vh", display: "flex", transition: "background 0.3s" }}>
@@ -2021,7 +2118,7 @@ export default function ChamaApp({ session }) {
           padding: "24px 0", position: "fixed", left: 0, top: 0, bottom: 0, zIndex: 100,
           boxShadow: "4px 0 24px rgba(0,0,0,0.2)",
         }}>
-          <SidebarContent t={t} isMobile={false} view={view} navItems={navItems} pendingCount={pendingCount} currentUser={currentUser} navigate={navigate} onSignOut={handleSignOut} />
+          <SidebarContent t={t} isMobile={false} view={view} navItems={navItems} pendingCount={pendingCount} currentUser={currentUser} navigate={navigate} onSignOut={signOut} />
         </div>
       )}
 
@@ -2042,7 +2139,7 @@ export default function ChamaApp({ session }) {
           transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
           boxShadow: drawerOpen ? "6px 0 32px rgba(0,0,0,0.3)" : "none",
         }}>
-          <SidebarContent t={t} isMobile={true} view={view} navItems={navItems} pendingCount={pendingCount} currentUser={currentUser} navigate={navigate} onSignOut={handleSignOut} setDrawerOpen={setDrawerOpen} />
+          <SidebarContent t={t} isMobile={true} view={view} navItems={navItems} pendingCount={pendingCount} currentUser={currentUser} navigate={navigate} onSignOut={signOut} setDrawerOpen={setDrawerOpen} />
         </div>
       )}
 
@@ -2110,6 +2207,15 @@ export default function ChamaApp({ session }) {
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} activeYear={activeYear} totalFundsOverride={totalFunds} />}
         {view === "mpesa"         && <MpesaView         t={t} currentUser={currentUser} />}
+        {view === "profile"       && <ProfileView       currentUser={currentUser} setCurrentUser={setCurrentUser} t={t} isMobile={isMobile} onResetPassword={() => setView("reset-password")} />}
+        {view === "reset-password" && (
+          <div style={{ maxWidth: 480, margin: "0 auto" }}>
+            <button onClick={() => setView("profile")} style={{ background: "none", border: "none", color: t.textSub, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 20, display: "flex", alignItems: "center", gap: 6 }}>
+              ← Back to Profile
+            </button>
+            <ResetPassword onComplete={() => { setView("profile"); showToast("Password changed successfully."); }} />
+          </div>
+        )}
       </div>
 
       {/* ── MOBILE BOTTOM NAV ── */}
