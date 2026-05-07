@@ -210,10 +210,8 @@ const calculateLoanInterest = (loan) => {
   termMonths = Math.max(termMonths, 1);
 
   if (loan.interest_type === "reducing_12") {
-    // Option B: 12% straight line on reducing balance
-    // Formula for fixed interest based on reducing balance with equal principal payments:
-    // Total Interest = Principal * rate * (n + 1) / 2
-    return loan.amount * 0.12 * (termMonths + 1) / 2;
+    // Option B: 12% straight line (flat)
+    return loan.amount * 0.12 * termMonths;
   }
 
   // Option 1: Normal 10% straight line interest (Flat)
@@ -424,7 +422,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
             <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${approvedMembers.length} active members`} accent="#2d7d46" />
             <StatCard t={t} label={`My ${activeYear} Contributions`} value={fmtKES(myContrib)} sub={`Target: ${fmtKES(MONTHLY_TARGET * 12)}`} accent="#1a5c8a" />
-            <StatCard t={t} label="Interest Options" value="10% / 12%" sub="Flat or Reducing Balance" accent="#c8a84b" />
+            <StatCard t={t} label="Interest Options" value="10% / 12%" sub="Both Straight Line (Flat)" accent="#c8a84b" />
             <StatCard t={t} label="Total Interest Collected" value={fmtKES(totalInterestCollected)} sub="From all loan repayments" accent="#e07b39" />
             {privileged && <>
               <StatCard t={t} label="Active Loans"            value={fmtKES(totalLoaned)} sub={`${loans.filter(l=>l.status==="active").length} loans out`} accent="#c8a84b" />
@@ -440,7 +438,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                 <div key={loan.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${t.warningBorder}` }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{fmtKES(loan.amount)} — {loan.purpose}</div>
-                    <div style={{ fontSize: 12, color: t.textSub }}>Due: {loan.due_date} · {loan.interest_type === 'reducing_12' ? '12% Reducing' : '10% Flat'}</div>
+                    <div style={{ fontSize: 12, color: t.textSub }}>Due: {loan.due_date} · {loan.interest_type === 'reducing_12' ? '12% Flat' : '10% Flat'}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontWeight: 800, color: "#e05a5a", fontSize: 16 }}>{fmtKES(loanBalance(loan))}</div>
@@ -1030,7 +1028,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: t.text }}>Loans</h2>
-          <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Flexible interest: 10% Flat or 12% Reducing</p>
+          <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Flexible interest: 10% or 12% Straight Line</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           {canManage && <Btn t={t} variant="ghost" small onClick={() => setModal("repay")}>Record Repayment</Btn>}
@@ -1067,7 +1065,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: t.text }}>{memberName(loan.member_id)}</div>
-                  <div style={{ fontSize: 13, color: t.textSub }}>{loan.purpose} · {loan.interest_type === 'reducing_12' ? '12% Reducing' : '10% Flat'} · Approved by {loan.approved_by}</div>
+                  <div style={{ fontSize: 13, color: t.textSub }}>{loan.purpose} · {loan.interest_type === 'reducing_12' ? '12% Flat' : '10% Flat'} · Approved by {loan.approved_by}</div>
                   <div style={{ fontSize: 12, color: t.textMuted, marginTop: 2 }}>Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''} · Due: {loan.due_date}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
@@ -1147,7 +1145,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           <Input t={t} label="Due Date" type="date" value={approveForm.due_date} onChange={e => setApproveForm({ ...approveForm, due_date: e.target.value })} />
           <Select label="Interest Option" t={t} value={approveForm.interest_type} onChange={e => setApproveForm({ ...approveForm, interest_type: e.target.value })}>
             <option value="flat_10">Option 1: 10% Straight Line (Flat)</option>
-            <option value="reducing_12">Option B: 12% Straight Line (Reducing Balance)</option>
+            <option value="reducing_12">Option B: 12% Straight Line (Flat)</option>
           </Select>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn t={t} variant="ghost" onClick={() => { setModal(null); setApproveTarget(null); }}>Cancel</Btn>
