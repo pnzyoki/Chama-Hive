@@ -106,7 +106,7 @@ const THEMES = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONTHLY_TARGET = 200;
-const INTEREST_RATE  = 0.10;
+const INTEREST_RATE  = 0.12;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtKES = (n) => `KES ${Number(n).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
