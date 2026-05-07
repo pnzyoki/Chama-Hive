@@ -1972,7 +1972,12 @@ export default function ChamaApp({ session }) {
       try {
         profile = await fetchProfile(session.user.id);
       } catch (err) {
+        console.warn("Failed to fetch profile:", err);
+      }
+
+      if (!profile) {
         setNeedsProfile(true);
+        if (showLoading) setAppLoading(false);
         return;
       }
 
@@ -1980,9 +1985,11 @@ export default function ChamaApp({ session }) {
         setCurrentUser(profile);
       } else if (profile && profile.status === "rejected") {
         setIsRejected(true);
+        if (showLoading) setAppLoading(false);
         return;
       } else {
         setIsWaitingApproval(true);
+        if (showLoading) setAppLoading(false);
         return;
       }
 
@@ -2013,7 +2020,10 @@ export default function ChamaApp({ session }) {
 
   // ── Initial Load & Realtime Subscription ───────────────────────────────────
   useEffect(() => {
-    loadData();
+    // Avoid reloading if we are already showing CompleteProfile
+    if (!needsProfile) {
+      loadData();
+    }
     
     // Set up realtime listeners for members, contributions, and loans
     const channel = supabase.channel('db-changes')
@@ -2025,7 +2035,7 @@ export default function ChamaApp({ session }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, needsProfile, activeYear]);
+  }, [session, activeYear]);
 
   // ── Loading screen ─────────────────────────────────────────────────────────
   if (appLoading) return (

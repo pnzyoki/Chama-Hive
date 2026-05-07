@@ -12,7 +12,7 @@ export async function fetchProfile(authId) {
     .from("members")
     .select("*")
     .eq("auth_id", authId)
-    .single();
+    .maybeSingle();
     
   if (error) throw error;
   return data;
