@@ -389,6 +389,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   // Data for charts
   const totalPaid = useMemo(() => loans.reduce((s, l) => s + (l.paid || 0), 0), [loans]);
   const totalLoanPrincipal = useMemo(() => loans.reduce((s, l) => s + (l.amount || 0), 0), [loans]);
+  const totalInterestCollected = useMemo(() => loans.reduce((s, l) => s + Math.max(0, (l.paid || 0) - (l.amount || 0)), 0), [loans]);
   const availableCash = Math.max(0, totalFunds + totalPaid - totalLoanPrincipal);
 
   const fundsData = [
@@ -413,6 +414,8 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
             <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${approvedMembers.length} active members`} accent="#2d7d46" />
             <StatCard t={t} label={`My ${activeYear} Contributions`} value={fmtKES(myContrib)} sub={`Target: ${fmtKES(MONTHLY_TARGET * 12)}`} accent="#1a5c8a" />
+            <StatCard t={t} label="Interest Rate" value={`${(INTEREST_RATE * 100).toFixed(0)}%`} sub="Straight-line basis" accent="#c8a84b" />
+            <StatCard t={t} label="Total Interest Collected" value={fmtKES(totalInterestCollected)} sub="From all loan repayments" accent="#e07b39" />
             {privileged && <>
               <StatCard t={t} label="Active Loans"            value={fmtKES(totalLoaned)} sub={`${loans.filter(l=>l.status==="active").length} loans out`} accent="#c8a84b" />
               <StatCard t={t} label="Total Owed (+ Interest)" value={fmtKES(totalOwed)}   sub="Principal + accrued interest" accent="#e07b39" />
