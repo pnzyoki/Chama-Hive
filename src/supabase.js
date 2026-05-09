@@ -58,6 +58,44 @@ export async function fetchTotalFunds() {
   return Number(data ?? 0);
 }
 
+/**
+ * Returns the TRUE total interest across ALL chama loans (bypasses RLS).
+ * Mirrors the JS calculateLoanInterest() logic in SQL.
+ *
+ * One-time setup — run this SQL once in your Supabase SQL Editor:
+ *
+ *   CREATE OR REPLACE FUNCTION get_total_loan_interest()
+ *   RETURNS numeric LANGUAGE sql SECURITY DEFINER AS $$
+ *     SELECT COALESCE(SUM(
+ *       CASE
+ *         WHEN due_date IS NULL THEN
+ *           CASE WHEN interest_type = 'reducing_12'
+ *             THEN amount * 0.12
+ *             ELSE amount * COALESCE(interest_rate, 0.10)
+ *           END
+ *         ELSE
+ *           CASE WHEN interest_type = 'reducing_12'
+ *             THEN amount * 0.12 * GREATEST(1, ROUND(
+ *                  EXTRACT(EPOCH FROM (due_date::date - COALESCE(approval_date, date)::date)) / 2592000))
+ *             ELSE amount * COALESCE(interest_rate, 0.10) * GREATEST(1, ROUND(
+ *                  EXTRACT(EPOCH FROM (due_date::date - COALESCE(approval_date, date)::date)) / 2592000))
+ *           END
+ *       END
+ *     ), 0)
+ *     FROM loans
+ *     WHERE status != 'pending';
+ *   $$;
+ *   GRANT EXECUTE ON FUNCTION get_total_loan_interest() TO authenticated;
+ */
+export async function fetchTotalLoanInterest() {
+  const { data, error } = await supabase.rpc('get_total_loan_interest');
+  if (error) {
+    console.warn('fetchTotalLoanInterest RPC not found — run the SQL setup. Falling back to null.', error.message);
+    return null; // null = caller falls back to local calculation
+  }
+  return Number(data ?? 0);
+}
+
 export async function fetchLoans() {
   const { data, error } = await supabase
     .from("loans")

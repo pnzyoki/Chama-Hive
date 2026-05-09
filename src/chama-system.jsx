@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, fetchTotalFunds, signOut } from "./supabase";
+import { supabase, fetchProfile, fetchMembers, fetchContributions, fetchLoans, fetchTotalFunds, fetchTotalLoanInterest, signOut } from "./supabase";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import ResetPassword from "./ResetPassword";
 
@@ -375,7 +375,7 @@ const DarkModeToggle = ({ darkMode, setDarkMode, t }) => (
 );
 
 // ─── Views ────────────────────────────────────────────────────────────────────
-function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile, totalFundsOverride }) {
+function Dashboard({ members, contributions, loans, currentUser, activeYear, t, isMobile, totalFundsOverride, totalInterestOverride }) {
   const approvedMembers  = useMemo(() => members.filter(m => m.status === "approved"), [members]);
   const visibleMembers   = useMemo(() => isPrivileged(currentUser.role)
     ? approvedMembers
@@ -394,8 +394,9 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const privileged  = isPrivileged(currentUser.role);
   const monthlyTotals = useMemo(() => getMonthlyTotals(contributions, activeYear, 8), [contributions, activeYear]);
 
-  // Total interest = sum of fixed interest across ALL chama loans
-  const totalInterest = useMemo(() => loans.reduce((s, l) => s + calculateLoanInterest(l), 0), [loans]);
+  // Total interest — prefer server-side aggregate (bypasses RLS) over local calculation
+  const localTotalInterest = useMemo(() => loans.reduce((s, l) => s + calculateLoanInterest(l), 0), [loans]);
+  const totalInterest = (totalInterestOverride !== null && totalInterestOverride !== undefined) ? totalInterestOverride : localTotalInterest;
 
   // Data for charts
   const totalPaid = useMemo(() => loans.reduce((s, l) => s + (l.paid || 0), 0), [loans]);
@@ -1999,7 +2000,8 @@ export default function ChamaApp({ session }) {
   const [contributions, setContributions] = useState([]);
   const [loans,         setLoans]         = useState([]);
   const [loanRequests,  setLoanRequests]  = useState([]);
-  const [totalFunds,    setTotalFunds]    = useState(null); // server-side aggregate — same for all roles
+  const [totalFunds,       setTotalFunds]       = useState(null); // server-side aggregate — same for all roles
+  const [totalLoanInterest, setTotalLoanInterest] = useState(null); // server-side aggregate — bypasses RLS
   const [drawerOpen,    setDrawerOpen]    = useState(false);
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
@@ -2092,6 +2094,10 @@ export default function ChamaApp({ session }) {
       //    All users see the same chama total regardless of their role.
       const trueTotalFunds = await fetchTotalFunds();
       setTotalFunds(trueTotalFunds);
+
+      // 6. Fetch true total loan interest via server-side aggregate (bypasses RLS)
+      const trueTotalLoanInterest = await fetchTotalLoanInterest();
+      setTotalLoanInterest(trueTotalLoanInterest);
 
     } catch (e) {
       setAppError(e.message || "Failed to load data. Please refresh.");
@@ -2294,7 +2300,7 @@ export default function ChamaApp({ session }) {
           </div>
         )}
 
-        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} totalFundsOverride={totalFunds} />}
+        {view === "dashboard"     && <Dashboard        members={members} contributions={contributions} loans={loans} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} totalFundsOverride={totalFunds} totalInterestOverride={totalLoanInterest} />}
         {view === "contributions" && <ContributionsView members={members} contributions={contributions} setContributions={setContributions} currentUser={currentUser} activeYear={activeYear} t={t} isMobile={isMobile} />}
         {view === "loans"         && <LoansView         members={members} loans={loans} setLoans={setLoans} loanRequests={loanRequests} setLoanRequests={setLoanRequests} currentUser={currentUser} t={t} isMobile={isMobile} />}
         {view === "members"       && <MembersView       members={members} setMembers={setMembers} contributions={contributions} loans={loans} currentUser={currentUser} t={t} isMobile={isMobile} activeYear={activeYear} totalFundsOverride={totalFunds} />}
