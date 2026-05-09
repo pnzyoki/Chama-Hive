@@ -394,11 +394,23 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const privileged  = isPrivileged(currentUser.role);
   const monthlyTotals = useMemo(() => getMonthlyTotals(contributions, activeYear, 8), [contributions, activeYear]);
 
+  // Total interest = sum of fixed interest across ALL chama loans
+  const totalInterest = useMemo(() => loans.reduce((s, l) => s + calculateLoanInterest(l), 0), [loans]);
+
   // Data for charts
   const totalPaid = useMemo(() => loans.reduce((s, l) => s + (l.paid || 0), 0), [loans]);
   const totalLoanPrincipal = useMemo(() => loans.reduce((s, l) => s + (l.amount || 0), 0), [loans]);
-  const totalInterestCollected = useMemo(() => loans.reduce((s, l) => s + Math.max(0, (l.paid || 0) - (l.amount || 0)), 0), [loans]);
   const availableCash = Math.max(0, totalFunds + totalPaid - totalLoanPrincipal);
+
+  // Deadline reminders
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const myOverdueLoans = useMemo(() => myLoans.filter(l => l.due_date && parseDateLocal(l.due_date) < today), [myLoans]);
+  const myDebt = useMemo(() => calculateDebt(approvedMembers.find(m => m.id === currentUser.id) || {}, contributions, activeYear), [approvedMembers, contributions, currentUser.id, activeYear]);
+  // Privileged: all overdue active loans chama-wide (excluding own — already shown above)
+  const allOverdueLoans = useMemo(() => privileged
+    ? loans.filter(l => l.status === "active" && l.member_id !== currentUser.id && l.due_date && parseDateLocal(l.due_date) < today)
+    : [], [loans, privileged, currentUser.id]);
+  const memberName = (id) => approvedMembers.find(m => m.id === id)?.name || "Unknown";
 
   const fundsData = [
     { name: "Available Cash", value: availableCash, color: "#2d7d46" },
@@ -414,17 +426,62 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
         <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 14 }}>Here's your chama at a glance</p>
       </div>
 
+      {/* ── Deadline Reminder Banner — visible to ALL members ── */}
+      {(myOverdueLoans.length > 0 || myDebt > 0 || allOverdueLoans.length > 0) && (
+        <div style={{
+          background: "linear-gradient(135deg,#ffeaea,#fff8e6)",
+          border: "1.5px solid #e05a5a", borderRadius: 16, padding: "16px 20px", marginBottom: 24,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 18 }}>⏰</span>
+            <span style={{ fontWeight: 800, fontSize: 15, color: "#c0392b" }}>Reminders & Deadlines</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* My own overdue loans */}
+            {myOverdueLoans.map(loan => (
+              <div key={loan.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(224,90,90,0.08)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(224,90,90,0.25)" }}>
+                <span style={{ fontSize: 16 }}>🏦</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: "#c0392b" }}>Loan overdue!</span>
+                  <span style={{ fontSize: 13, color: "#333", marginLeft: 6 }}>{fmtKES(loanBalance(loan))} outstanding · was due <strong>{loan.due_date}</strong></span>
+                </div>
+              </div>
+            ))}
+            {/* My own contribution arrears */}
+            {myDebt > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(200,168,75,0.10)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(200,168,75,0.35)" }}>
+                <span style={{ fontSize: 16 }}>💰</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: "#b8860b" }}>Contribution arrears:</span>
+                  <span style={{ fontSize: 13, color: "#333", marginLeft: 6 }}>You owe <strong>{fmtKES(myDebt)}</strong> in outstanding contributions.</span>
+                </div>
+              </div>
+            )}
+            {/* Privileged: other members' overdue loans */}
+            {privileged && allOverdueLoans.map(loan => (
+              <div key={loan.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(224,90,90,0.06)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(224,90,90,0.20)" }}>
+                <span style={{ fontSize: 16 }}>🏦</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: "#c0392b" }}>{memberName(loan.member_id)}</span>
+                  <span style={{ fontSize: 13, color: "#555", marginLeft: 6 }}>— loan of {fmtKES(loan.amount)} overdue since <strong>{loan.due_date}</strong> · {fmtKES(loanBalance(loan))} remaining</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 24, flexDirection: isMobile ? "column" : "row" }}>
         
         {/* Main Content Area */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Summary — visible to ALL members */}
+          {/* Summary stats */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
             <StatCard t={t} label="Total Chama Funds"  value={fmtKES(totalFunds)}  sub={`${approvedMembers.length} active members`} accent="#2d7d46" />
             <StatCard t={t} label={`My ${activeYear} Contributions`} value={fmtKES(myContrib)} sub={`Target: ${fmtKES(MONTHLY_TARGET * 12)}`} accent="#1a5c8a" />
-            <StatCard t={t} label="Interest Options" value="10% / 12%" sub="Both Straight Line (Flat)" accent="#c8a84b" />
-            <StatCard t={t} label="Total Interest Collected" value={fmtKES(totalInterestCollected)} sub="From all loan repayments" accent="#e07b39" />
+            <StatCard t={t} label="Total Loan Interest" value={fmtKES(totalInterest)} sub="Across all chama loans" accent="#e07b39" />
             {privileged && <>
+              <StatCard t={t} label="Interest Options" value="10% / 12%" sub="Both Straight Line (Flat)" accent="#c8a84b" />
               <StatCard t={t} label="Active Loans"            value={fmtKES(totalLoaned)} sub={`${loans.filter(l=>l.status==="active").length} loans out`} accent="#c8a84b" />
               <StatCard t={t} label="Total Owed (+ Interest)" value={fmtKES(totalOwed)}   sub="Principal + accrued interest" accent="#e07b39" />
             </>}
@@ -791,26 +848,21 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         </div>
         {privileged && (
           <div style={{ display: "flex", gap: 10 }}>
-            {/* Excel upload — available to all privileged roles */}
-            {privileged && (
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={handleDownloadTemplate} style={{
-                  display: "flex", alignItems: "center", gap: 7, background: t.surface3,
-                  border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
-                  cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
-                }}>
-                  📥 Download Template
-                </button>
-                <label style={{
-                  display: "flex", alignItems: "center", gap: 7, background: t.surface3,
-                  border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
-                  cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
-                }}>
-                  📊 Upload Excel
-                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} style={{ display: "none" }} />
-                </label>
-              </div>
-            )}
+            <button onClick={handleDownloadTemplate} style={{
+              display: "flex", alignItems: "center", gap: 7, background: t.surface3,
+              border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
+              cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
+            }}>
+              📥 Download Template
+            </button>
+            <label style={{
+              display: "flex", alignItems: "center", gap: 7, background: t.surface3,
+              border: `1px solid ${t.border}`, borderRadius: 10, padding: "9px 16px",
+              cursor: "pointer", fontSize: 13, fontWeight: 700, color: t.text, whiteSpace: "nowrap",
+            }}>
+              📊 Upload Excel
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} style={{ display: "none" }} />
+            </label>
             <Btn t={t} onClick={() => setModal("add")}>+ Record Payment</Btn>
           </div>
         )}
