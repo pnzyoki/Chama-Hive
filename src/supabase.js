@@ -41,7 +41,7 @@ export async function fetchContributions(year = null) {
  * Returns the TRUE total of all contributions across all members & years.
  * Uses a SECURITY DEFINER Postgres function so RLS does not restrict the result.
  *
- * One-time setup — run this SQL once in your Supabase SQL Editor:
+ * One-time setup - run this SQL once in your Supabase SQL Editor:
  *
  *   CREATE OR REPLACE FUNCTION get_total_funds()
  *   RETURNS numeric LANGUAGE sql SECURITY DEFINER AS $$
@@ -52,7 +52,7 @@ export async function fetchContributions(year = null) {
 export async function fetchTotalFunds() {
   const { data, error } = await supabase.rpc('get_total_funds');
   if (error) {
-    console.warn('fetchTotalFunds RPC not found — run the SQL setup. Falling back to 0.', error.message);
+    console.warn('fetchTotalFunds RPC not found - run the SQL setup. Falling back to 0.', error.message);
     return null; // null = caller will fall back to local calculation
   }
   return Number(data ?? 0);
@@ -62,7 +62,7 @@ export async function fetchTotalFunds() {
  * Returns the TRUE total interest across ALL chama loans (bypasses RLS).
  * Mirrors the JS calculateLoanInterest() logic in SQL.
  *
- * One-time setup — run this SQL once in your Supabase SQL Editor:
+ * One-time setup - run this SQL once in your Supabase SQL Editor:
  *
  *   CREATE OR REPLACE FUNCTION get_total_loan_interest()
  *   RETURNS numeric LANGUAGE sql SECURITY DEFINER AS $$
@@ -90,7 +90,7 @@ export async function fetchTotalFunds() {
 export async function fetchTotalLoanInterest() {
   const { data, error } = await supabase.rpc('get_total_loan_interest');
   if (error) {
-    console.warn('fetchTotalLoanInterest RPC not found — run the SQL setup. Falling back to null.', error.message);
+    console.warn('fetchTotalLoanInterest RPC not found - run the SQL setup. Falling back to null.', error.message);
     return null; // null = caller falls back to local calculation
   }
   return Number(data ?? 0);

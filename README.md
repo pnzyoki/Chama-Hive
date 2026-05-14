@@ -1,20 +1,20 @@
 # 🌿 ChamaHive
 
-A modern Sacco & Chama management system for Kenyan investment groups — built with React, Vite, and Supabase.
+A modern Sacco & Chama management system for Kenyan investment groups - built with React, Vite, and Supabase.
 
 ## Stack
-- **Frontend** — React 18 + Vite 5
-- **Backend** — Supabase (PostgreSQL + Auth)
-- **Charts** — Recharts
-- **Styling** — Vanilla CSS-in-JS, DM Sans
+- **Frontend** - React 18 + Vite 5
+- **Backend** - Supabase (PostgreSQL + Auth)
+- **Charts** - Recharts
+- **Styling** - Vanilla CSS-in-JS, DM Sans
 
 ## Features
-- 📊 **Dashboard** — fund allocation pie chart, monthly contributions bar chart, loan alerts
-- 💰 **Contributions** — manual entry or bulk Excel/CSV upload with preview
-- 🏦 **Loans** — request, approve/reject, repay with auto interest accrual (10%/mo)
-- 👥 **Members** — enroll, edit, remove, assign roles (member / treasurer / chairman / admin)
+- 📊 **Dashboard** - fund allocation pie chart, monthly contributions bar chart, loan alerts
+- 💰 **Contributions** - manual entry or bulk Excel/CSV upload with preview
+- 🏦 **Loans** - request, approve/reject, repay with auto interest accrual (10%/mo)
+- 👥 **Members** - enroll, edit, remove, assign roles (member / treasurer / chairman / admin)
 - 🌙 **Dark mode** + fully responsive (mobile drawer + bottom nav)
-- 📱 **M-Pesa** integration (Daraja API) — *coming soon*
+- 📱 **M-Pesa** integration (Daraja API) - *coming soon*
 
 ## Quick Start
 
@@ -70,7 +70,7 @@ create table loans (
 | `member` | Own data + loan requests |
 | `treasurer` | + Record contributions, repayments |
 | `chairman` | + Approve / reject loans |
-| `admin` | Full access — enroll & manage members |
+| `admin` | Full access - enroll & manage members |
 
 ## Excel Import Format
 Column `Name` (must match enrolled name) + month columns `Jan Feb ... Dec` with KES amounts.

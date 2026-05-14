@@ -382,7 +382,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
     : approvedMembers.filter(m => m.id === currentUser.id),
     [approvedMembers, currentUser.id, currentUser.role]);
 
-  // Contribution map — computed once per activeYear/contributions change
+  // Contribution map - computed once per activeYear/contributions change
   const contribMap = useMemo(() => buildContribMap(contributions, activeYear), [contributions, activeYear]);
 
   const localFunds  = useMemo(() => approvedMembers.reduce((s, m) => s + totalContrib(contributions, m.id), 0), [approvedMembers, contributions]);
@@ -394,7 +394,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const privileged  = isPrivileged(currentUser.role);
   const monthlyTotals = useMemo(() => getMonthlyTotals(contributions, activeYear, 8), [contributions, activeYear]);
 
-  // Total interest — prefer server-side aggregate (bypasses RLS) over local calculation
+  // Total interest - prefer server-side aggregate (bypasses RLS) over local calculation
   const localTotalInterest = useMemo(() => loans.reduce((s, l) => s + calculateLoanInterest(l), 0), [loans]);
   const totalInterest = (totalInterestOverride !== null && totalInterestOverride !== undefined) ? totalInterestOverride : localTotalInterest;
 
@@ -407,7 +407,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const myOverdueLoans = useMemo(() => myLoans.filter(l => l.due_date && parseDateLocal(l.due_date) < today), [myLoans]);
   const myDebt = useMemo(() => calculateDebt(approvedMembers.find(m => m.id === currentUser.id) || {}, contributions, activeYear), [approvedMembers, contributions, currentUser.id, activeYear]);
-  // Privileged: all overdue active loans chama-wide (excluding own — already shown above)
+  // Privileged: all overdue active loans chama-wide (excluding own - already shown above)
   const allOverdueLoans = useMemo(() => privileged
     ? loans.filter(l => l.status === "active" && l.member_id !== currentUser.id && l.due_date && parseDateLocal(l.due_date) < today)
     : [], [loans, privileged, currentUser.id]);
@@ -427,7 +427,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
         <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 14 }}>Here's your chama at a glance</p>
       </div>
 
-      {/* ── Deadline Reminder Banner — visible to ALL members ── */}
+      {/* ── Deadline Reminder Banner - visible to ALL members ── */}
       {(myOverdueLoans.length > 0 || myDebt > 0 || allOverdueLoans.length > 0) && (
         <div style={{
           background: "linear-gradient(135deg,#ffeaea,#fff8e6)",
@@ -464,7 +464,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                 <span style={{ fontSize: 16 }}>🏦</span>
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 700, fontSize: 13, color: "#c0392b" }}>{memberName(loan.member_id)}</span>
-                  <span style={{ fontSize: 13, color: "#555", marginLeft: 6 }}>— loan of {fmtKES(loan.amount)} overdue since <strong>{loan.due_date}</strong> · {fmtKES(loanBalance(loan))} remaining</span>
+                  <span style={{ fontSize: 13, color: "#555", marginLeft: 6 }}>- loan of {fmtKES(loan.amount)} overdue since <strong>{loan.due_date}</strong> · {fmtKES(loanBalance(loan))} remaining</span>
                 </div>
               </div>
             ))}
@@ -488,14 +488,14 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
             </>}
           </div>
 
-          {/* My active loans — visible to all (own loans only) */}
+          {/* My active loans - visible to all (own loans only) */}
           {myLoans.length > 0 && (
             <div style={{ background: t.warningBg, border: `1.5px solid ${t.warningBorder}`, borderRadius: 16, padding: 20, marginBottom: 24 }}>
               <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 800, color: t.warningText }}>⚠ Your Active Loans</h3>
               {myLoans.map(loan => (
                 <div key={loan.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${t.warningBorder}` }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{fmtKES(loan.amount)} — {loan.purpose}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{fmtKES(loan.amount)} - {loan.purpose}</div>
                     <div style={{ fontSize: 12, color: t.textSub }}>Due: {loan.due_date} · {loan.interest_type === 'reducing_12' ? '12% Flat' : '10% Flat'}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -507,7 +507,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
             </div>
           )}
 
-          {/* Contribution overview table — all members see status icons; only privileged see KES totals per member */}
+          {/* Contribution overview table - all members see status icons; only privileged see KES totals per member */}
           <div style={{ background: t.surface, borderRadius: 16, padding: 24, boxShadow: t.cardShadow, border: `1px solid ${t.border}` }}>
             <h3 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 800, color: t.text }}>{activeYear} Contribution Overview</h3>
             <div style={{ overflowX: "auto" }}>
@@ -550,7 +550,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                           </td>
                         );
                       })}
-                      {/* Arrears column — always visible */}
+                      {/* Arrears column - always visible */}
                       {(() => {
                         const debt = calculateDebt(member, contributions, activeYear);
                         return (
@@ -569,7 +569,7 @@ function Dashboard({ members, contributions, loans, currentUser, activeYear, t, 
                           </td>
                         );
                       })()}
-                      {/* KES totals per member — privileged only */}
+                      {/* KES totals per member - privileged only */}
                       {privileged && (
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: t.text }}>
                           {fmtKES(totalContribYear(contributions, member.id, activeYear))}
@@ -829,7 +829,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
               }}>
                 <div style={{ fontSize: 10, color: t.textSub, fontWeight: 700 }}>{mo}</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: val >= MONTHLY_TARGET ? "#2d7d46" : val > 0 ? "#c8a84b" : t.textMuted }}>
-                  {val > 0 ? `${(val/1000).toFixed(1)}k` : "—"}
+                  {val > 0 ? `${(val/1000).toFixed(1)}k` : "-"}
                 </div>
               </div>
             );
@@ -874,7 +874,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 12, padding: "11px 16px", marginBottom: 20, fontSize: 12, color: t.textSub, display: "flex", alignItems: "flex-start", gap: 10 }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
           <span>
-            <strong style={{ color: t.text }}>Excel format:</strong> Column A = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Name</code> (must match enrolled member name exactly), Column B = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Year</code> (e.g. 2025 or 2026 — required, minimum 2025), then one column per month: <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec</code>. Amounts in KES. Leave blank for no contribution that month.
+            <strong style={{ color: t.text }}>Excel format:</strong> Column A = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Name</code> (must match enrolled member name exactly), Column B = <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Year</code> (e.g. 2025 or 2026 - required, minimum 2025), then one column per month: <code style={{ background: t.surface3, padding: "1px 5px", borderRadius: 4 }}>Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec</code>. Amounts in KES. Leave blank for no contribution that month.
           </span>
         </div>
       )}
@@ -886,7 +886,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
         </div>
       )}
 
-      {/* Member cards — privileged see all, regular see only own */}
+      {/* Member cards - privileged see all, regular see only own */}
       {visibleMembers.map(member => <MemberCard key={member.id} member={member} />)}
       {/* Manual entry modal */}
       {modal === "add" && (
@@ -1095,7 +1095,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           {pendingRequests.map(req => (
             <div key={req.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${t.warningBorder}` }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{memberName(req.member_id)} — {fmtKES(req.amount)}</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{memberName(req.member_id)} - {fmtKES(req.amount)}</div>
                 <div style={{ fontSize: 12, color: t.textSub }}>{req.purpose} · {req.date}</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -1153,7 +1153,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           {visibleLoans.filter(l => l.status === "completed").map(loan => (
             <div key={loan.id} style={{ background: t.completedLoanBg, borderRadius: 14, padding: 16, marginBottom: 10, borderLeft: "4px solid #2d7d46", display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${t.border}` }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: t.completedLoanText }}>{memberName(loan.member_id)} — {loan.purpose}</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: t.completedLoanText }}>{memberName(loan.member_id)} - {loan.purpose}</div>
                 <div style={{ fontSize: 12, color: t.textMuted }}>
                   Applied: {loan.date}{loan.approval_date ? ` · Approved: ${loan.approval_date}` : ''}
                   {loan.repaid_at ? ` · Repaid: ${loan.repaid_at}` : ''} · {fmtKES(loan.amount)} original
@@ -1190,7 +1190,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       {modal === "approve" && approveTarget && (
         <Modal title="Approve Loan" onClose={() => { setModal(null); setApproveTarget(null); }} t={t}>
           <div style={{ background: t.surface2, borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: t.textSub, border: `1px solid ${t.border}` }}>
-            <div style={{ fontWeight: 700, color: t.text, marginBottom: 4 }}>{memberName(approveTarget.member_id)} — {fmtKES(approveTarget.amount)}</div>
+            <div style={{ fontWeight: 700, color: t.text, marginBottom: 4 }}>{memberName(approveTarget.member_id)} - {fmtKES(approveTarget.amount)}</div>
             <div>{approveTarget.purpose}</div>
             <div style={{ marginTop: 4, fontSize: 12 }}>Applied: {approveTarget.date}</div>
           </div>
@@ -1212,7 +1212,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
           <Select label="Loan" t={t} value={repayForm.loanId} onChange={e => setRepayForm({ ...repayForm, loanId: e.target.value })}>
             <option value="">Select active loan...</option>
             {loans.filter(l => l.status === "active").map(l => (
-              <option key={l.id} value={l.id}>{memberName(l.member_id)} — {fmtKES(loanBalance(l))} outstanding</option>
+              <option key={l.id} value={l.id}>{memberName(l.member_id)} - {fmtKES(loanBalance(l))} outstanding</option>
             ))}
           </Select>
           <div style={{ background: t.infoRowBg, padding: 12, borderRadius: 8, marginTop: 16 }}>
@@ -1233,7 +1233,7 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
       {modal === "editdates" && editDatesTarget && (
         <Modal title="Edit Loan Dates" onClose={() => { setModal(null); setEditDatesTarget(null); }} t={t}>
           <div style={{ background: t.surface2, borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: t.textSub, border: `1px solid ${t.border}` }}>
-            <div style={{ fontWeight: 700, color: t.text, marginBottom: 2 }}>{memberName(editDatesTarget.member_id)} — {fmtKES(editDatesTarget.amount)}</div>
+            <div style={{ fontWeight: 700, color: t.text, marginBottom: 2 }}>{memberName(editDatesTarget.member_id)} - {fmtKES(editDatesTarget.amount)}</div>
             <div style={{ fontSize: 12 }}>{editDatesTarget.purpose}</div>
           </div>
           <Input t={t} label="Application Date" type="date" value={editDatesForm.date} onChange={e => setEditDatesForm({ ...editDatesForm, date: e.target.value })} />
@@ -1430,9 +1430,9 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
         </div>
       )}
 
-      {/* ── Summary stat strip — visible to ALL users ── */}
+      {/* ── Summary stat strip - visible to ALL users ── */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
-        {/* Total Chama Funds — the whole kitty */}
+        {/* Total Chama Funds - the whole kitty */}
         <div style={{
           flex: "1 1 160px", background: t.surface, borderRadius: 14,
           padding: "16px 20px", borderLeft: "4px solid #2d7d46",
@@ -1443,7 +1443,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
           <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>{approvedMembers.length} active members</div>
         </div>
 
-        {/* My All-time Contributions — visible to ALL including admin */}
+        {/* My All-time Contributions - visible to ALL including admin */}
         <div style={{
           flex: "1 1 160px", background: t.surface, borderRadius: 14,
           padding: "16px 20px", borderLeft: "4px solid #1a5c8a",
@@ -1454,7 +1454,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
           <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>{activeYear}: {fmtKES(myYearContrib)}</div>
         </div>
 
-        {/* Total Members — privileged only */}
+        {/* Total Members - privileged only */}
         {privileged && (
           <div style={{
             flex: "1 1 160px", background: t.surface, borderRadius: 14,
@@ -1497,7 +1497,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
                 )}
               </div>
 
-              {/* Details — privileged see all, regular only see own */}
+              {/* Details - privileged see all, regular only see own */}
               {(privileged || isOwnCard) && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {[
@@ -1530,7 +1530,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
                       <span style={{ fontWeight: 600, color: t.text, fontSize: 12 }}>{member.next_of_kin}</span>
                     </div>
                   )}
-                  {/* enrolled_by is an internal UUID — do not expose it to non-privileged users */}
+                  {/* enrolled_by is an internal UUID - do not expose it to non-privileged users */}
                   {privileged && member.enrolled_by && (
                     <div style={{ fontSize: 11, color: t.textMuted, textAlign: "right", marginTop: 3 }}>Enrolled by {members.find(m => m.id === member.enrolled_by)?.name || "Admin"}</div>
                   )}
@@ -1540,7 +1540,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
           );
         })}
 
-        {/* Pending Approvals Section — captures anyone not approved/rejected */}
+        {/* Pending Approvals Section - captures anyone not approved/rejected */}
         {privileged && members.some(m => m.status !== "approved" && m.status !== "rejected") && (
           <div style={{ marginTop: 32, marginBottom: 16 }}>
              <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: "#e07b39", textTransform: "uppercase", letterSpacing: 0.8, display: "flex", alignItems: "center", gap: 10 }}>
@@ -1575,7 +1575,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
         )}
       </div>
 
-      {/* Enroll Modal — no role selector; always starts as Member */}
+      {/* Enroll Modal - no role selector; always starts as Member */}
       {modal === "enroll" && (
         <Modal title="Enroll New Member" onClose={() => { setModal(null); setErrors({}); }} t={t}>
           <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: t.textSub }}>
@@ -1589,7 +1589,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
 
       {/* Edit Modal */}
       {modal === "edit" && (
-        <Modal title={`Edit — ${editTarget?.name}`} onClose={() => { setModal(null); setErrors({}); }} t={t}>
+        <Modal title={`Edit - ${editTarget?.name}`} onClose={() => { setModal(null); setErrors({}); }} t={t}>
           <div style={{ maxHeight: "58vh", overflowY: "auto", paddingRight: 4 }}>
             <MemberForm form={form} setForm={setForm} errors={errors} t={t} onSave={handleEdit} setModal={setModal} setErrors={setErrors} saveLabel="Save Changes" />
           </div>
@@ -1598,7 +1598,7 @@ function MembersView({ members, setMembers, contributions, loans, currentUser, t
 
       {/* Assign Role Modal */}
       {modal === "role" && roleTarget && (
-        <Modal title={`Assign Role — ${roleTarget.name}`} onClose={() => setModal(null)} t={t}>
+        <Modal title={`Assign Role - ${roleTarget.name}`} onClose={() => setModal(null)} t={t}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22, padding: 14, background: t.surface2, borderRadius: 12, border: `1px solid ${t.border}` }}>
             <Avatar initials={roleTarget.avatar} size={44} color={roleTarget.role} />
             <div>
@@ -1671,7 +1671,7 @@ function MpesaView({ t, currentUser }) {
           <h2 style={{ margin: "0 0 10px", fontSize: 24, fontWeight: 800, color: t.text }}>Coming Soon</h2>
           <p style={{ color: t.textSub, fontSize: 14, margin: "0 0 28px", lineHeight: 1.7 }}>
             M-Pesa integration is on the way! Soon you'll be able to make contributions and
-            receive receipts directly through your phone — no manual entry needed.
+            receive receipts directly through your phone - no manual entry needed.
           </p>
 
           {/* Feature preview pills */}
@@ -1711,7 +1711,7 @@ function MpesaView({ t, currentUser }) {
     <div>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: t.text }}>M-Pesa Integration</h2>
-        <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Safaricom Daraja API — configuration &amp; status</p>
+        <p style={{ color: t.textSub, margin: "4px 0 0", fontSize: 13 }}>Safaricom Daraja API - configuration &amp; status</p>
       </div>
       <div style={{ background: t.surface, borderRadius: 20, padding: 32, boxShadow: t.cardShadow, maxWidth: 560, border: `1px solid ${t.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
@@ -1790,8 +1790,8 @@ function ProfileView({ currentUser, setCurrentUser, t, isMobile, onResetPassword
     { label: "Email",       value: currentUser.email  },
     { label: "Role",        value: currentUser.role,  badge: true },
     { label: "Member Since",value: currentUser.join_date },
-    { label: "Next of Kin", value: currentUser.next_of_kin || "—" },
-    { label: "NOK Phone",   value: currentUser.nok_phone  || "—" },
+    { label: "Next of Kin", value: currentUser.next_of_kin || "-" },
+    { label: "NOK Phone",   value: currentUser.nok_phone  || "-" },
   ];
 
   return (
@@ -1826,7 +1826,7 @@ function ProfileView({ currentUser, setCurrentUser, t, isMobile, onResetPassword
             <span style={{ fontSize: 13, color: t.textSub }}>{f.label}</span>
             {f.badge
               ? <Badge role={f.value} t={t} />
-              : <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{f.value || "—"}</span>
+              : <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{f.value || "-"}</span>
             }
           </div>
         ))}
@@ -1932,7 +1932,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-// ─── Sidebar content — top-level so React can track it correctly ─────────────
+// ─── Sidebar content - top-level so React can track it correctly ─────────────
 function SidebarContent({ t, isMobile, view, navItems, pendingCount, currentUser, navigate, onSignOut, setDrawerOpen }) {
   return (
     <>
@@ -2000,8 +2000,8 @@ export default function ChamaApp({ session }) {
   const [contributions, setContributions] = useState([]);
   const [loans,         setLoans]         = useState([]);
   const [loanRequests,  setLoanRequests]  = useState([]);
-  const [totalFunds,       setTotalFunds]       = useState(null); // server-side aggregate — same for all roles
-  const [totalLoanInterest, setTotalLoanInterest] = useState(null); // server-side aggregate — bypasses RLS
+  const [totalFunds,       setTotalFunds]       = useState(null); // server-side aggregate - same for all roles
+  const [totalLoanInterest, setTotalLoanInterest] = useState(null); // server-side aggregate - bypasses RLS
   const [drawerOpen,    setDrawerOpen]    = useState(false);
   const [appLoading,    setAppLoading]    = useState(true);
   const [appError,      setAppError]      = useState("");
@@ -2246,8 +2246,8 @@ export default function ChamaApp({ session }) {
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 150,
           background: t.sidebar, height: 56, display: "flex", alignItems: "center",
-          justifyContent: "space-between", padding: "0 16px",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
+          justifyContent: "space-between", padding: "env(safe-area-inset-top) 16px 0 16px",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.2)", boxSizing: "content-box"
         }}>
           <button onClick={() => setDrawerOpen(true)} style={{
             background: "none", border: "none", cursor: "pointer", color: "#fff",
@@ -2277,7 +2277,7 @@ export default function ChamaApp({ session }) {
       <div style={{
         marginLeft: isMobile ? 0 : 240,
         flex: 1,
-        padding: isMobile ? "72px 16px 88px" : "32px 32px 48px",
+        padding: isMobile ? "calc(72px + env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom))" : "32px 32px 48px",
         transition: "margin 0.3s",
         minWidth: 0,
       }}>
@@ -2322,6 +2322,7 @@ export default function ChamaApp({ session }) {
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 150,
           background: t.sidebar, height: 64, display: "flex", alignItems: "stretch",
           boxShadow: "0 -2px 16px rgba(0,0,0,0.2)", borderTop: `1px solid ${t.sidebarBorder}`,
+          paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "content-box"
         }}>
           {navItems.map(item => (
             <button key={item.id} onClick={() => navigate(item.id)} style={{
