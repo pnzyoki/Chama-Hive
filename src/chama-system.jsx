@@ -686,13 +686,13 @@ function ContributionsView({ members, contributions, setContributions, currentUs
       showToast("Contribution saved successfully.");
     } catch (err) {
       setError(err.message || "Failed to save contribution. Check console.");
-      console.error("Save failure:", err);
+      if (import.meta.env.DEV) console.error("Save failure:", err);
     }
   };
 
   const handleDownloadTemplate = async () => {
     try {
-      const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
+      const XLSX = await import("xlsx");
       const data = members.map(m => {
         const row = { Name: m.name, Year: activeYear };
         MONTHS.forEach(mo => row[mo] = "");
@@ -703,7 +703,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
       XLSX.utils.book_append_sheet(wb, ws, "Contributions");
       XLSX.writeFile(wb, `ChamaHive_Contributions_${activeYear}_Template.xlsx`);
     } catch (err) {
-      console.error("Template download failed:", err);
+      if (import.meta.env.DEV) console.error("Template download failed:", err);
       setXlStatus("❌ Failed to generate template.");
     }
   };
@@ -719,7 +719,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
     }
     setXlStatus("Reading file…");
     try {
-      const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
+      const XLSX = await import("xlsx");
       const data = await file.arrayBuffer();
       const wb   = XLSX.read(data, { type: "array" });
       const ws   = wb.Sheets[wb.SheetNames[0]];
@@ -784,7 +784,7 @@ function ContributionsView({ members, contributions, setContributions, currentUs
       setXlStatus(`✅ Successfully pushed ${updatesToPush.length} contributions to Supabase.`);
       setTimeout(() => setXlStatus(""), 5000);
     } catch (err) {
-      console.error("Bulk upload failed:", err);
+      if (import.meta.env.DEV) console.error("Bulk upload failed:", err);
       showToast("Failed to push to Supabase. Check console.", "error");
       setXlStatus("❌ Failed to push to Supabase. Check console.");
       setTimeout(() => setXlStatus(""), 5000);
@@ -1051,20 +1051,17 @@ function LoansView({ members, loans, setLoans, loanRequests, setLoanRequests, cu
     if (!repayForm.loanId || !amt || amt <= 0) return;
     amt = Math.min(amt, 100000000);
     // In straight-line basis, interest is already fixed.
-    const repaidAt = repayForm.repaid_at || new Date().toISOString().split("T")[0];
     try {
-      const { addRepayment, updateLoan } = await import("./supabase");
-      await addRepayment(repayForm.loanId, amt, currentUser.id);
+      const { safeAddRepayment } = await import("./supabase");
       const loan = loans.find(l => l.id === repayForm.loanId);
-      if (loan) {
-        const newPaid   = loan.paid + amt;
-        // In a straight-line basis, interest is fixed, so repayment date doesn't affect the total balance
-        const newStatus = loanBalance({ ...loan, paid: newPaid }) <= 0 ? "completed" : "active";
-        const updates   = { paid: newPaid, status: newStatus };
-        if (newStatus === "completed") updates.repaid_at = repaidAt;
-        await updateLoan(repayForm.loanId, updates);
-        setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, ...updates } : l));
-      }
+      if (!loan) throw new Error("Loan not found");
+      // Calculate total owed for the atomic RPC
+      const totalOwed = loan.amount + calculateLoanInterest(loan);
+      const result = await safeAddRepayment(repayForm.loanId, amt, totalOwed);
+      // Update local state from RPC result
+      const updates = { paid: result.paid, status: result.status };
+      if (result.repaid_at) updates.repaid_at = result.repaid_at;
+      setLoans(prev => prev.map(l => l.id === repayForm.loanId ? { ...l, ...updates } : l));
       setModal(null);
       setRepayForm({ loanId: "", amount: "", repaid_at: new Date().toISOString().split("T")[0] });
       showToast("Repayment recorded successfully.");
@@ -1742,14 +1739,23 @@ function MpesaView({ t, currentUser }) {
         </div>
         <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 24 }}>
           <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 16, color: t.text }}>Configuration</div>
-          <Input t={t} label="Consumer Key"         placeholder="Paste your Daraja consumer key" />
-          <Input t={t} label="Consumer Secret"      type="password" placeholder="••••••••••••••••" />
-          <Input t={t} label="Paybill / Till Number" placeholder="e.g. 400200" />
-          <Input t={t} label="Passkey"              type="password" placeholder="••••••••••••••••" />
-          <Btn t={t} style={{ width: "100%" }}>Connect M-Pesa</Btn>
+          <div style={{
+            background: "rgba(224, 90, 90, 0.08)", border: "1px solid rgba(224, 90, 90, 0.3)",
+            borderRadius: 12, padding: "16px 20px", marginBottom: 16,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 18 }}>🔒</span>
+              <span style={{ fontWeight: 800, fontSize: 14, color: "#e05a5a" }}>Security Notice</span>
+            </div>
+            <p style={{ fontSize: 13, color: t.textSub, margin: 0, lineHeight: 1.6 }}>
+              API credentials (Consumer Key, Secret, Passkey) must <strong style={{ color: t.text }}>never</strong> be
+              entered in the browser. These should be configured as environment variables in a secure backend
+              (Supabase Edge Functions or a dedicated server).
+            </p>
+          </div>
           <p style={{ fontSize: 12, color: t.textMuted, textAlign: "center", marginTop: 12 }}>
-            Don't have Daraja credentials?{" "}
-            <a href="https://developer.safaricom.co.ke" target="_blank" rel="noreferrer" style={{ color: "#2d7d46", fontWeight: 700 }}>Apply at Safaricom Developer Portal →</a>
+            Need to set up M-Pesa?{" "}
+            <a href="https://developer.safaricom.co.ke" target="_blank" rel="noreferrer" style={{ color: "#2d7d46", fontWeight: 700 }}>Safaricom Developer Portal →</a>
           </p>
         </div>
       </div>
@@ -2056,7 +2062,7 @@ export default function ChamaApp({ session }) {
       try {
         profile = await fetchProfile(session.user.id);
       } catch (err) {
-        console.warn("Failed to fetch profile:", err);
+        if (import.meta.env.DEV) console.warn("Failed to fetch profile:", err);
       }
 
       if (!profile) {

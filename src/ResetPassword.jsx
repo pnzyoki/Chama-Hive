@@ -1,6 +1,6 @@
 // src/ResetPassword.jsx
 import React, { useState } from "react";
-import { supabase } from "./supabase";
+import { supabase, updatePasswordTimestamp } from "./supabase";
 
 export default function ResetPassword({ onComplete }) {
   const [password, setPassword] = useState("");
@@ -39,13 +39,10 @@ export default function ResetPassword({ onComplete }) {
       const { error: updateErr } = await supabase.auth.updateUser({ password });
       if (updateErr) throw updateErr;
 
-      // Also update the members table password_changed_at if it exists
+      // Update password_changed_at using the shared helper for consistency
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase
-          .from("members")
-          .update({ password_changed_at: new Date().toISOString() })
-          .eq("auth_id", user.id);
+        await updatePasswordTimestamp(user.id);
       }
 
       setMessage("Password updated successfully! Redirecting...");

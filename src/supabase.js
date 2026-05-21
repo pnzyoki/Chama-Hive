@@ -52,7 +52,7 @@ export async function fetchContributions(year = null) {
 export async function fetchTotalFunds() {
   const { data, error } = await supabase.rpc('get_total_funds');
   if (error) {
-    console.warn('fetchTotalFunds RPC not found - run the SQL setup. Falling back to 0.', error.message);
+    if (import.meta.env.DEV) console.warn('fetchTotalFunds RPC not found - run the SQL setup. Falling back to 0.', error.message);
     return null; // null = caller will fall back to local calculation
   }
   return Number(data ?? 0);
@@ -90,7 +90,7 @@ export async function fetchTotalFunds() {
 export async function fetchTotalLoanInterest() {
   const { data, error } = await supabase.rpc('get_total_loan_interest');
   if (error) {
-    console.warn('fetchTotalLoanInterest RPC not found - run the SQL setup. Falling back to null.', error.message);
+    if (import.meta.env.DEV) console.warn('fetchTotalLoanInterest RPC not found - run the SQL setup. Falling back to null.', error.message);
     return null; // null = caller falls back to local calculation
   }
   return Number(data ?? 0);
@@ -106,6 +106,7 @@ export async function fetchLoans() {
 }
 
 export async function createMember(memberData) {
+  if (!memberData.name || !memberData.phone) throw new Error('Name and phone are required');
   const { data, error } = await supabase
     .from("members")
     .insert([memberData])
@@ -117,6 +118,7 @@ export async function createMember(memberData) {
 }
 
 export async function updateMember(id, updates) {
+  if (!id) throw new Error('Member ID is required');
   const { data, error } = await supabase
     .from("members")
     .update(updates)
@@ -138,6 +140,7 @@ export async function deleteMember(id) {
 }
 
 export async function createLoan(loanData) {
+  if (!loanData.amount || loanData.amount <= 0 || loanData.amount > 100000000) throw new Error('Invalid loan amount');
   const { data, error } = await supabase
     .from("loans")
     .insert([loanData])
@@ -157,34 +160,21 @@ export async function updateLoan(id, updates) {
     .single();
     
   if (error) {
-    console.error("updateLoan error:", error, "Payload:", updates);
+    if (import.meta.env.DEV) console.error("updateLoan error:", error, "Payload:", updates);
     throw error;
   }
   return data;
 }
 
-export async function addRepayment(loanId, amount, userId) {
-  // First, fetch the current loan to compute new paid amount
-  const { data: loan, error: fetchErr } = await supabase
-    .from("loans")
-    .select("paid")
-    .eq("id", loanId)
-    .single();
-    
-  if (fetchErr) throw fetchErr;
-
-  const newPaid = Number(loan.paid || 0) + Number(amount);
-  
-  // Make the update
-  const { data, error: updateErr } = await supabase
-    .from("loans")
-    .update({ paid: newPaid })
-    .eq("id", loanId)
-    .select()
-    .single();
-    
-  if (updateErr) throw updateErr;
-  return data;
+export async function safeAddRepayment(loanId, amount, totalOwed) {
+  // Atomic repayment via PostgreSQL function - prevents race conditions
+  const { data, error } = await supabase.rpc('safe_add_repayment', {
+    p_loan_id: loanId,
+    p_amount: amount,
+    p_total_owed: totalOwed,
+  });
+  if (error) throw error;
+  return data; // { id, paid, status, repaid_at }
 }
 
 export async function upsertContribution(memberId, month, year, amount, userId) {
@@ -317,9 +307,9 @@ export async function updatePasswordTimestamp(authId) {
       .from("members")
       .update({ password_changed_at: new Date().toISOString() })
       .eq("auth_id", authId);
-    if (error) console.warn("Could not update password timestamp. Ensure SQL migration has been run.", error);
+    if (error && import.meta.env.DEV) console.warn("Could not update password timestamp. Ensure SQL migration has been run.", error);
   } catch (err) {
-    console.warn("Silent failure updating password timestamp:", err);
+    if (import.meta.env.DEV) console.warn("Silent failure updating password timestamp:", err);
   }
 }
 

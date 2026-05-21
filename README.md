@@ -1,6 +1,6 @@
 # 🌿 ChamaHive
 
-A Sacco & Chama management system for Kenyan investment groups — built with React, Vite, and Supabase.
+A Sacco & Chama management system for Kenyan investment groups - built with React, Vite, and Supabase.
 
 ## Stack
 - React 18 + Vite 5
@@ -8,12 +8,12 @@ A Sacco & Chama management system for Kenyan investment groups — built with Re
 - Recharts, DM Sans
 
 ## Features
-- 📊 Dashboard — fund allocation, monthly contributions chart, loan alerts
-- 💰 Contributions — manual entry or bulk Excel/CSV upload
-- 🏦 Loans — request, approve/reject, repay (10% interest/mo)
-- 👥 Members — enroll, edit, remove, assign roles
+- 📊 Dashboard - fund allocation, monthly contributions chart, loan alerts
+- 💰 Contributions - manual entry or bulk Excel/CSV upload
+- 🏦 Loans - request, approve/reject, repay (10% interest/mo)
+- 👥 Members - enroll, edit, remove, assign roles
 - 🌙 Dark mode + responsive (mobile drawer & bottom nav)
-- 📱 M-Pesa (Daraja API) — *coming soon*
+- 📱 M-Pesa (Daraja API) - *coming soon*
 
 ## Quick Start
 

@@ -10,6 +10,27 @@ export default function SignIn({ onSignedIn }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
+  const [cooldownText, setCooldownText] = useState("");
+
+  React.useEffect(() => {
+    if (!lockoutUntil) { setCooldownText(""); return; }
+    const tick = () => {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setCooldownText("");
+        setError("");
+      } else {
+        setCooldownText(`Too many failed attempts. Try again in ${remaining}s`);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockoutUntil]);
+
 
   const checkStrength = (pass) => {
     if (!pass) return 0;
@@ -44,6 +65,10 @@ export default function SignIn({ onSignedIn }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      setError(cooldownText);
+      return;
+    }
     if (!email || !password) return;
     
     if (isSignUp && checkStrength(password) < 3) {
@@ -75,9 +100,18 @@ export default function SignIn({ onSignedIn }) {
         const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
         if (signInErr) throw signInErr;
         if (onSignedIn) onSignedIn();
+        setFailedAttempts(0);
       }
     } catch (err) {
-      setError(err.message || "Authentication failed. Check your data or connection.");
+      const newFails = failedAttempts + 1;
+      setFailedAttempts(newFails);
+      if (newFails >= 5) {
+        setLockoutUntil(Date.now() + 60000); // 60-second cooldown
+        setFailedAttempts(0);
+        setError("Too many failed attempts. Please wait 60 seconds.");
+      } else {
+        setError(err.message || "Authentication failed. Check your data or connection.");
+      }
     } finally {
       setLoading(false);
     }
@@ -115,6 +149,11 @@ export default function SignIn({ onSignedIn }) {
         {error && (
           <div className="animate-fade-in" style={{ background: "rgba(224, 90, 90, 0.15)", border: "1px solid rgba(224, 90, 90, 0.4)", color: "#e05a5a", padding: "12px", borderRadius: 10, fontSize: 13, marginBottom: 20, textAlign: "left" }}>
             {error}
+          </div>
+        )}
+        {cooldownText && !error && (
+          <div className="animate-fade-in" style={{ background: "rgba(200, 168, 75, 0.15)", border: "1px solid rgba(200, 168, 75, 0.4)", color: "#c8a84b", padding: "12px", borderRadius: 10, fontSize: 13, marginBottom: 20, textAlign: "left" }}>
+            ⏳ {cooldownText}
           </div>
         )}
         {message && (
@@ -179,7 +218,7 @@ export default function SignIn({ onSignedIn }) {
                 </div>
               </div>
             )}
-            <button disabled={loading} style={{
+            <button disabled={loading || (lockoutUntil && Date.now() < lockoutUntil)} style={{
               width: "100%", padding: "16px", borderRadius: 12, background: "#238636", color: "#fff",
               fontSize: 16, fontWeight: 800, border: "none", fontFamily: "inherit", cursor: loading ? "not-allowed" : "pointer",
               transition: "background 0.2s, transform 0.1s", display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
